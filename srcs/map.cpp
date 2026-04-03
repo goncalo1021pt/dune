@@ -40,20 +40,27 @@ void GameMap::initializeMap() {
     addTerritory("Pasty Mesa",       terrainType::rock, 0, {5, 6, 7, 8});
     addTerritory("Plastic Basin",    terrainType::rock, 0, {12, 13, 14});
     addTerritory("False Wall West",  terrainType::rock, 0, {16, 17, 18});
-
-    addTerritory("Imperial Basin",  terrainType::desert,  0, {9, 10, 11});
-    addTerritory("Arsunt",          terrainType::desert,  0, {11, 12});
-    addTerritory("Tsimpo",          terrainType::desert,  0, {11, 12, 13});
-    addTerritory("Hagga Basin",     terrainType::desert,  6, {12, 13});
-    addTerritory("Basin",           terrainType::desert,  0, {9});
-    addTerritory("Old Gap",         terrainType::desert,  6, {9, 10, 11});
-    addTerritory("Broken Land",     terrainType::desert,  0, {11, 12});
-    addTerritory("Sihaya Ridge",    terrainType::desert,  0, {9});
-    addTerritory("Gara Kulon",      terrainType::desert,  0, {7});
-    addTerritory("Hole in the Rock",terrainType::desert,  0, {9});
-    addTerritory("The Minor Erg",   terrainType::desert,  0, {5, 6, 7, 8});
-    addTerritory("Harg Pass",       terrainType::desert,  0, {4, 5});
-    addTerritory("Red Chasm",       terrainType::desert,  8, {7});
+	
+    addTerritory("Cielago West",       terrainType::desert, 0,  {18, 1});
+    addTerritory("Meridian",           terrainType::desert, 0,  {1, 2});
+    addTerritory("Cielago Depression", terrainType::desert, 0,  {1, 2, 3});
+    addTerritory("Cielago North",      terrainType::desert, 8,  {1, 2, 3});
+    addTerritory("Cielago South",      terrainType::desert, 12, {2, 3});
+    addTerritory("Cielago East",       terrainType::desert, 0,  {3, 4});
+    addTerritory("Harg Pass",          terrainType::desert,  0, {4, 5});
+    addTerritory("South Mesa",         terrainType::desert, 0,  {4, 5, 6});
+    addTerritory("The Minor Erg",      terrainType::desert,  0, {5, 6, 7, 8});
+    addTerritory("Red Chasm",          terrainType::desert,  8, {7});
+    addTerritory("Gara Kulon",         terrainType::desert,  0, {8});
+    addTerritory("Basin",              terrainType::desert,  0, {9});
+    addTerritory("Hole in the Rock",   terrainType::desert,  0, {9});
+    addTerritory("Sihaya Ridge",       terrainType::desert,  0, {9});
+    addTerritory("Imperial Basin",     terrainType::desert,  0, {9, 10, 11});
+    addTerritory("Old Gap",            terrainType::desert,  6, {9, 10, 11});
+    addTerritory("Arsunt",             terrainType::desert,  0, {11, 12});
+    addTerritory("Tsimpo",             terrainType::desert,  0, {11, 12, 13});
+    addTerritory("Hagga Basin",        terrainType::desert,  6, {12, 13});
+    addTerritory("Broken Land",        terrainType::desert,  0, {11, 12});
     addTerritory("Rock Outcroppings",  terrainType::desert, 6,  {13, 14});
     addTerritory("Bight of the Cliff", terrainType::desert, 0,  {14, 15});
     addTerritory("Wind Pass",          terrainType::desert, 0,  {14, 15, 16, 17});
@@ -63,13 +70,6 @@ void GameMap::initializeMap() {
     addTerritory("The Greater Flat",   terrainType::desert, 0,  {16});
     addTerritory("Habbanya Erg",       terrainType::desert, 8,  {16, 17});
     addTerritory("Habbanya Ridge Flat",terrainType::desert, 0,  {17, 18});
-    addTerritory("Cielago North",      terrainType::desert, 8,  {1, 2, 3});
-    addTerritory("Cielago West",       terrainType::desert, 0,  {18, 1});
-    addTerritory("Cielago South",      terrainType::desert, 12, {2, 3});
-    addTerritory("Cielago Depression", terrainType::desert, 0,  {1, 2, 3});
-    addTerritory("Cielago East",       terrainType::desert, 0,  {3, 4});
-    addTerritory("Meridian",           terrainType::desert, 0,  {1, 2});
-    addTerritory("South Mesa",         terrainType::desert, 0,  {4, 5, 6});
 
     addTerritory("Polar Sink", terrainType::northPole, 0,
         {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18});
