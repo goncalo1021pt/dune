@@ -40,7 +40,7 @@ void GameMap::initializeMap() {
 	addTerritory("Cielago West", terrainType::desert, 0, {1, 18});
 	addTerritory("Cielago Depression", terrainType::desert, 0, {1, 2, 3});
 	addTerritory("Cielago North", terrainType::desert, 0, {1, 2, 3});
-	addTerritory("Cielago South", terrainType::desert, 0, {1, 2, 3});
+	addTerritory("Cielago South", terrainType::desert, 0, {2, 3});
 
     addTerritory("Imperial Basin", terrainType::desert, 8, {10, 11, 12});
     addTerritory("Hagga Basin", terrainType::desert, 6, {13});
