@@ -8,6 +8,7 @@
 class Player;
 class GameMap;
 struct spiceCard;
+enum class gamePhase : int;
 
 /**
  * PhaseContext: Dependency injection container for all game state
@@ -16,7 +17,7 @@ struct spiceCard;
 struct PhaseContext {
 	// Turn and phase state
 	int& turnNumber;
-	int& currentPhase;
+	gamePhase& currentPhase;
 
 	// Players and map
 	std::vector<Player*>& players;
@@ -46,7 +47,7 @@ struct PhaseContext {
 	// Constructor: bind all references
 	PhaseContext(
 		int& turnNumber_,
-		int& currentPhase_,
+		gamePhase& currentPhase_,
 		std::vector<Player*>& players_,
 		int playerCount_,
 		GameMap& map_,
