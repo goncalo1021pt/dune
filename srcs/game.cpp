@@ -15,6 +15,21 @@ static const std::string FACTION_NAMES[] = {
 	"Spacing Guild"
 };
 
+static std::string getPhaseName(gamePhase phase) {
+	switch (phase) {
+		case gamePhase::STORM: return "STORM";
+		case gamePhase::SPICE_BLOW: return "SPICE_BLOW";
+		case gamePhase::CHOAM_CHARITY: return "CHOAM_CHARITY";
+		case gamePhase::BIDDING: return "BIDDING";
+		case gamePhase::REVIVAL: return "REVIVAL";
+		case gamePhase::SHIP_AND_MOVE: return "SHIP_AND_MOVE";
+		case gamePhase::BATTLE: return "BATTLE";
+		case gamePhase::SPICE_COLLECTION: return "SPICE_COLLECTION";
+		case gamePhase::MENTAT_PAUSE: return "MENTAT_PAUSE";
+		default: return "UNKNOWN";
+	}
+}
+
 Game::Game(int numPlayers, unsigned int seed) 
 	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
@@ -220,7 +235,7 @@ void Game::processPhase() {
 	if (phases[static_cast<int>(currentPhase)]) {
 		phases[static_cast<int>(currentPhase)]->execute(ctx);
 	} else {
-		std::cout << "  Phase " << static_cast<int>(currentPhase) << " (TODO)" << std::endl;
+		std::cout << "  " << getPhaseName(currentPhase) << " Phase (TODO)" << std::endl;
 	}
 }
 

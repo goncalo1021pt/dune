@@ -6,13 +6,11 @@
 #include <memory>
 #include <random>
 
+#include "settings.hpp"
 #include "map.hpp"
 #include "player.hpp"
 #include "phases/phase.hpp"
-
-#define MIN_PLAYERS 2
-#define MAX_PLAYERS 6
-#define MAX_TURNS 14
+#include "phases/ship_and_move_phase.hpp"
 
 enum class gamePhase : int {
 	STORM,

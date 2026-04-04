@@ -2,11 +2,8 @@
 
 #include <vector>
 #include <string>
+#include "settings.hpp"
 
-#define MAX_TREACHERY_CARDS 4
-#define MAX_TRAITOR_CARDS 4
-#define STARTING_SPICE 0
-#define STARTING_UNITS 20
 // Forward declaration
 enum class faction;
 
