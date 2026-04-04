@@ -1,4 +1,8 @@
 #include "game.hpp"
+#include "phases/phase_context.hpp"
+#include "phases/storm_phase.hpp"
+#include "phases/spice_blow_phase.hpp"
+#include "phases/simple_phases.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -14,10 +18,10 @@ static const std::string FACTION_NAMES[] = {
 Game::Game(int numPlayers, unsigned int seed) 
 	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
-	  nextStormCard(0), hasNextStormCard(false), stormDeck(), stormDeckIndex(0),
-	  beneGesseritCharity(false), useExtendedSpiceBlow(false),
-	  spiceDeck(), spiceDeckIndex(0), spiceDiscardPileA(), spiceDiscardPileB(),
-	  _map(), rng(seed) {
+	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
+	  useExtendedSpiceBlow(false), spiceDeck(), spiceDeckIndex(0),
+	  spiceDiscardPileA(), spiceDiscardPileB(), beneGesseritCharity(false),
+	  playerTokenSectors(), _map(), rng(seed), phases() {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -27,6 +31,8 @@ Game::Game(int numPlayers, unsigned int seed)
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
 	}
+
+	initializePhases();
 }
 
 Game::~Game() {
@@ -78,10 +84,23 @@ void Game::initializeGame() {
 	std::cout << "=== Game Initialized ===" << std::endl;
 }
 
+void Game::initializePhases() {
+	phases.clear();
+	phases.resize(NUM_PHASES);
+	phases[static_cast<int>(gamePhase::STORM)]          = std::make_unique<StormPhase>();
+	phases[static_cast<int>(gamePhase::SPICE_BLOW)]     = std::make_unique<SpiceBlowPhase>();
+	phases[static_cast<int>(gamePhase::CHOAM_CHARITY)]  = std::make_unique<ChoamCharityPhase>();
+	// phases[static_cast<int>(gamePhase::BIDDING)]     = BIDDING (TODO)
+	phases[static_cast<int>(gamePhase::REVIVAL)]        = std::make_unique<RevivalPhase>();
+	// phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)] = SHIP_AND_MOVE (TODO)
+	// phases[static_cast<int>(gamePhase::BATTLE)]      = BATTLE (TODO)
+	// phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = SPICE_COLLECTION (TODO)
+	// phases[static_cast<int>(gamePhase::MENTAT_PAUSE)] = MENTAT_PAUSE (TODO)
+}
+
 void Game::initializeStormDeck() {
 	stormDeck = {1, 2, 3, 4, 5, 6};
 	std::shuffle(stormDeck.begin(), stormDeck.end(), rng);
-	stormDeckIndex = 0;
 }
 
 void Game::initializeSpiceDeck() {
@@ -171,16 +190,6 @@ void Game::resolveWormOnTerritory(const std::string& territoryName) {
 	          << spiceDestroyed << " spice removed" << std::endl;
 }
 
-int Game::drawStormCard() {
-	if (stormDeckIndex >= stormDeck.size()) {
-		initializeStormDeck();
-	}
-
-	int card = stormDeck[stormDeckIndex];
-	stormDeckIndex++;
-	return card;
-}
-
 const Player* Game::getPlayer(int index) const {
 	if (index >= 0 && index < playerCount) {
 		return players[index];
@@ -199,240 +208,19 @@ bool Game::checkVictory() {
 	return false;
 }
 
-void Game::phaseSTORM() {
-	std::cout << "  STORM Phase" << std::endl;
-
-	if (turnNumber == 1) {
-		std::uniform_int_distribution<> startSectorDist(1, 18);
-		stormSector = startSectorDist(rng);
-		lastStormCard = 0;
-		nextStormCard = drawStormCard();
-		hasNextStormCard = true;
-
-		std::cout << "    First turn setup: storm placed at random sector " << stormSector << std::endl;
-		std::cout << "    Next storm card prepared: " << nextStormCard << std::endl;
-		return;
-	}
-
-	if (!hasNextStormCard) {
-		nextStormCard = drawStormCard();
-		hasNextStormCard = true;
-	}
-
-	lastStormCard = nextStormCard;
-	hasNextStormCard = false;
-	moveStorm(lastStormCard);
-
-	nextStormCard = drawStormCard();
-	hasNextStormCard = true;
-
-	std::cout << "    Storm card resolved: " << lastStormCard << std::endl;
-	std::cout << "    Storm now at sector " << stormSector << std::endl;
-	std::cout << "    Next storm card prepared: " << nextStormCard << std::endl;
-}
-
-void Game::moveStorm(int sectorsToMove) {
-	stormSector += sectorsToMove;
-	while (stormSector > 18) {
-		stormSector -= 18;
-	}
-	while (stormSector < 1) {
-		stormSector += 18;
-	}
-}
-
-void Game::phaseSPICE_BLOW() {
-	std::cout << "  SPICE_BLOW Phase" << std::endl;
-
-	const int blowCount = useExtendedSpiceBlow ? 2 : 1;
-
-	for (int blowIndex = 0; blowIndex < blowCount; ++blowIndex) {
-		spiceCard card = drawSpiceCard();
-		const int discardPileIndex = useExtendedSpiceBlow ? blowIndex : 0;
-		const std::vector<spiceCard>& targetDiscardPile =
-			(useExtendedSpiceBlow && discardPileIndex == 1) ? spiceDiscardPileB : spiceDiscardPileA;
-
-		if (card.type == spiceCardType::WORM) {
-			std::cout << "    Draw " << (blowIndex + 1) << ": WORM" << std::endl;
-
-			if (turnNumber > 1) {
-				std::cout << "    NEXUS triggered (alliances not implemented yet)" << std::endl;
-			}
-
-			if (targetDiscardPile.empty()) {
-				std::cout << "    Worm discarded (no prior discarded card in this pile)" << std::endl;
-			} else {
-				const spiceCard& topDiscardCard = targetDiscardPile.back();
-				if (topDiscardCard.type != spiceCardType::LOCATION) {
-					std::cout << "    Worm resolves with no effect (top discard card is WORM)" << std::endl;
-				} else {
-					territory* targetTerritory = _map.getTerritory(topDiscardCard.territoryName);
-					if (targetTerritory == nullptr) {
-						std::cout << "    Worm resolves with no effect (invalid target territory)" << std::endl;
-					} else if (targetTerritory->spiceAmount <= 0) {
-						std::cout << "    Worm resolves on " << topDiscardCard.territoryName
-						          << " with no effect (no spice present)" << std::endl;
-					} else {
-						resolveWormOnTerritory(topDiscardCard.territoryName);
-					}
-				}
-			}
-
-			discardSpiceCard(card, discardPileIndex);
-			continue;
-		}
-
-		territory* terr = _map.getTerritory(card.territoryName);
-		if (terr == nullptr) {
-			std::cout << "    Draw " << (blowIndex + 1)
-			          << ": invalid territory card discarded" << std::endl;
-			discardSpiceCard(card, discardPileIndex);
-			continue;
-		}
-
-		terr->spiceAmount += card.spiceAmount;
-
-		std::cout << "    Draw " << (blowIndex + 1) << ": "
-		          << card.territoryName << " (" << card.spiceAmount << " spice)"
-		          << " -> territory now has " << terr->spiceAmount << std::endl;
-
-		discardSpiceCard(card, discardPileIndex);
-	}
-}
-
-void Game::phaseCHOAM_CHARITY() {
-	std::cout << "  CHOAM_CHARITY Phase" << std::endl;
-	for (int i = 0; i < playerCount; ++i) {
-		int currentSpice = players[i]->getSpice();
-		bool isBeneGesserit = (players[i]->getFactionIndex() == static_cast<int>(faction::BENE_GESSERIT));
-
-		bool shouldReceiveCharity = (currentSpice <= 1);
-		if (beneGesseritCharity && isBeneGesserit) {
-			shouldReceiveCharity = true;
-		}
-
-		if (shouldReceiveCharity && currentSpice < 2) {
-			int charityAmount = 2 - currentSpice;
-			players[i]->addSpice(charityAmount);
-			std::cout << "    " << players[i]->getFactionName() << " receives "
-			          << charityAmount << " spice from CHOAM (now at "
-			          << players[i]->getSpice() << ")" << std::endl;
-		}
-	}
-}
-
-void Game::phaseBIDDING() {
-	std::cout << "  BIDDING Phase" << std::endl;
-	// TODO: Players bid for leaders
-}
-
-void Game::phaseREVIVAL() {
-	std::cout << "  REVIVAL Phase" << std::endl;
-	const int maxRevivesPerTurn = 3;
-	const int spiceCostPerPaidRevive = 2;
-
-	for (int i = 0; i < playerCount; ++i) {
-		int destroyed = players[i]->getUnitsDestroyed();
-		if (destroyed <= 0) {
-			continue;
-		}
-
-		int freeRevives = players[i]->getFreeRevivesPerTurn();
-		int revivedForFree = std::min(std::min(freeRevives, maxRevivesPerTurn), destroyed);
-
-		int reviveSlotsLeft = maxRevivesPerTurn - revivedForFree;
-		int destroyedAfterFree = destroyed - revivedForFree;
-		int affordablePaidRevives = players[i]->getSpice() / spiceCostPerPaidRevive;
-		int revivedPaid = std::min(std::min(reviveSlotsLeft, destroyedAfterFree), affordablePaidRevives);
-		int spicePaid = revivedPaid * spiceCostPerPaidRevive;
-		int totalRevived = revivedForFree + revivedPaid;
-
-		if (totalRevived <= 0) {
-			continue;
-		}
-
-		if (spicePaid > 0) {
-			players[i]->removeSpice(spicePaid);
-		}
-		players[i]->reviveUnits(totalRevived);
-
-		std::cout << "    " << players[i]->getFactionName() << " revives "
-		          << totalRevived << " units (" << revivedForFree << " free";
-		if (revivedPaid > 0) {
-			std::cout << ", " << revivedPaid << " paid for " << spicePaid << " spice";
-		}
-		std::cout << ")" << std::endl;
-	}
-}
-
-void Game::phaseSHIP_AND_MOVE() {
-	std::cout << "  SHIP_AND_MOVE Phase" << std::endl;
-	// TODO: Players move units to territories
-}
-
-void Game::phaseBATTLE() {
-	std::cout << "  BATTLE Phase" << std::endl;
-	// TODO: Resolve battles
-}
-
-void Game::phaseSPICE_COLLECTION() {
-	std::cout << "  SPICE_COLLECTION Phase" << std::endl;
-	// Players collect spice from territories they control
-	for (int i = 0; i < playerCount; ++i) {
-		int spiceGain = 0;
-		for (const auto& terr : _map.getTerritories()) {
-			if (_map.isControlled(terr.name, i)) {
-				spiceGain += terr.spiceAmount;
-			}
-		}
-		if (spiceGain > 0) {
-			players[i]->addSpice(spiceGain);
-			std::cout << "    " << players[i]->getFactionName() << " gains " 
-			          << spiceGain << " spice" << std::endl;
-		}
-	}
-}
-
-void Game::phaseMENTAT_PAUSE() {
-	std::cout << "  MENTAT_PAUSE Phase" << std::endl;
-	// Check victory condition
-	for (int i = 0; i < playerCount; ++i) {
-		int controlled = _map.countControlledTerritories(i);
-		std::cout << "    " << players[i]->getFactionName() << " controls " 
-		          << controlled << " territories, has " << players[i]->getSpice() 
-		          << " spice" << std::endl;
-	}
-}
-
 void Game::processPhase() {
-	switch (currentPhase) {
-		case gamePhase::STORM:
-			phaseSTORM();
-			break;
-		case gamePhase::SPICE_BLOW:
-			phaseSPICE_BLOW();
-			break;
-		case gamePhase::CHOAM_CHARITY:
-			phaseCHOAM_CHARITY();
-			break;
-		case gamePhase::BIDDING:
-			phaseBIDDING();
-			break;
-		case gamePhase::REVIVAL:
-			phaseREVIVAL();
-			break;
-		case gamePhase::SHIP_AND_MOVE:
-			phaseSHIP_AND_MOVE();
-			break;
-		case gamePhase::BATTLE:
-			phaseBATTLE();
-			break;
-		case gamePhase::SPICE_COLLECTION:
-			phaseSPICE_COLLECTION();
-			break;
-		case gamePhase::MENTAT_PAUSE:
-			phaseMENTAT_PAUSE();
-			break;
+	PhaseContext ctx(
+		turnNumber, currentPhase, players, playerCount, _map,
+		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
+		stormDeck, useExtendedSpiceBlow,
+		spiceDeck, spiceDeckIndex, spiceDiscardPileA, spiceDiscardPileB,
+		beneGesseritCharity, rng
+	);
+
+	if (phases[static_cast<int>(currentPhase)]) {
+		phases[static_cast<int>(currentPhase)]->execute(ctx);
+	} else {
+		std::cout << "  Phase " << static_cast<int>(currentPhase) << " (TODO)" << std::endl;
 	}
 }
 
@@ -440,11 +228,10 @@ void Game::processTurn() {
 	turnNumber++;
 	std::cout << "\n--- Turn " << turnNumber << " ---" << std::endl;
 	
-	// Execute all 9 phases
-	currentPhase = gamePhase::STORM;
-	for (int phase = 0; phase < 9; ++phase) {
+	// Execute all phases
+	for (int i = 0; i < NUM_PHASES; ++i) {
+		currentPhase = static_cast<gamePhase>(i);
 		processPhase();
-		currentPhase = static_cast<gamePhase>(static_cast<int>(currentPhase) + 1);
 	}
 }
 
