@@ -4,7 +4,7 @@
 Player::Player(int factionIdx, const std::string& factionName) 
 	: factionName(factionName), factionIndex(factionIdx), homeSectorIndex(factionIdx),
 	  spice(STARTING_SPICE), unitsReserve(STARTING_UNITS), unitsDeployed(0),
-	  unitsDestroyed(0) {
+	  unitsDestroyed(0), freeReviveModifier(1) {
 }
 
 Player::~Player() {}
@@ -59,6 +59,10 @@ void Player::reviveUnits(int count) {
 	unitsReserve += canRevive;
 }
 
+void Player::setFreeReviveModifier(int modifier) {
+	freeReviveModifier = modifier;
+}
+
 void Player::addTreacheryCard(const std::string& card) {
 	treacheryCards.push_back(card);
 }
@@ -111,6 +115,10 @@ int Player::getUnitsDestroyed() const {
 
 int Player::getTotalUnits() const { 
 	return unitsReserve + unitsDeployed; 
+}
+
+int Player::getFreeRevivesPerTurn() const {
+	return std::max(0, freeReviveModifier);
 }
 
 const std::vector<std::string>& Player::getTreacheryCards() const { 
