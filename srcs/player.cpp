@@ -1,10 +1,6 @@
 #include "player.hpp"
 #include <algorithm>
 
-// Standard faction starting values: 10 spice, 20 units in reserve
-static const int STARTING_SPICE = 10;
-static const int STARTING_UNITS = 20;
-
 Player::Player(int factionIdx, const std::string& factionName) 
 	: factionName(factionName), factionIndex(factionIdx), homeSectorIndex(factionIdx),
 	  spice(STARTING_SPICE), unitsReserve(STARTING_UNITS), unitsDeployed(0),

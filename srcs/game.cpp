@@ -13,14 +13,16 @@ static const std::string FACTION_NAMES[] = {
 
 Game::Game(int numPlayers, unsigned int seed) 
 	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
-	  players(), playerCount(numPlayers), stormSector(0), _map(), rng(seed) {
+	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
+	  nextStormCard(0), hasNextStormCard(false), stormDeck(), stormDeckIndex(0),
+	  beneGesseritCharity(false),
+	  _map(), rng(seed) {
 	
-	// Validate player count
-	if (playerCount < 2 || playerCount > MAX_PLAYERS) {
-		playerCount = 2;
+	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
+		throw std::invalid_argument("Number of players must be between " + 
+			std::to_string(MIN_PLAYERS) + " and " + std::to_string(MAX_PLAYERS));
 	}
 	
-	// Create players for this game
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
 	}
@@ -38,11 +40,33 @@ void Game::initializeGame() {
 	std::cout << "Number of players: " << playerCount << std::endl;
 	
 	_map.initializeMap();
-	std::cout << "Map initialized with 5 territories" << std::endl;
+	std::cout << "Map initialized with " << _map.getTerritories().size() << " territories" << std::endl;
 	
 	for (int i = 0; i < playerCount; ++i) {
 		turnOrder.push_back(FACTION_NAMES[i]);
 	}
+	
+	stormSector = 0;
+	initializeStormDeck();
+	std::cout << "\nStorm will be placed randomly during Turn 1 STORM phase" << std::endl;
+	
+	// Initialize player token sectors (2, 5, 8, 11, 14, 17)
+	// Pick playerCount tokens evenly spaced from the array
+	int tokenSectors[] = {2, 5, 8, 11, 14, 17};
+	std::uniform_int_distribution<> offsetDist(0, 5);
+	int randomOffset = offsetDist(rng);
+	
+	playerTokenSectors.clear();
+	int spacing = 6 / playerCount;
+	for (int i = 0; i < playerCount; ++i) {
+		int index = (randomOffset + i * spacing) % 6;
+		playerTokenSectors.push_back(tokenSectors[index]);
+	}
+	std::cout << "Player tokens placed at sectors:";
+	for (int i = 0; i < playerCount; ++i) {
+		std::cout << " P" << (i + 1) << "-" << playerTokenSectors[i];
+	}
+	std::cout << std::endl;
 	
 	std::cout << "\nPlayers initialized:" << std::endl;
 	for (int i = 0; i < playerCount; ++i) {
@@ -52,6 +76,22 @@ void Game::initializeGame() {
 	}
 	
 	std::cout << "=== Game Initialized ===" << std::endl;
+}
+
+void Game::initializeStormDeck() {
+	stormDeck = {1, 2, 3, 4, 5, 6};
+	std::shuffle(stormDeck.begin(), stormDeck.end(), rng);
+	stormDeckIndex = 0;
+}
+
+int Game::drawStormCard() {
+	if (stormDeckIndex >= stormDeck.size()) {
+		initializeStormDeck();
+	}
+
+	int card = stormDeck[stormDeckIndex];
+	stormDeckIndex++;
+	return card;
 }
 
 const Player* Game::getPlayer(int index) const {
@@ -74,7 +114,44 @@ bool Game::checkVictory() {
 
 void Game::phaseSTORM() {
 	std::cout << "  STORM Phase" << std::endl;
-	// TODO: Move storm, apply damage
+
+	if (turnNumber == 1) {
+		std::uniform_int_distribution<> startSectorDist(1, 18);
+		stormSector = startSectorDist(rng);
+		lastStormCard = 0;
+		nextStormCard = drawStormCard();
+		hasNextStormCard = true;
+
+		std::cout << "    First turn setup: storm placed at random sector " << stormSector << std::endl;
+		std::cout << "    Next storm card prepared: " << nextStormCard << std::endl;
+		return;
+	}
+
+	if (!hasNextStormCard) {
+		nextStormCard = drawStormCard();
+		hasNextStormCard = true;
+	}
+
+	lastStormCard = nextStormCard;
+	hasNextStormCard = false;
+	moveStorm(lastStormCard);
+
+	nextStormCard = drawStormCard();
+	hasNextStormCard = true;
+
+	std::cout << "    Storm card resolved: " << lastStormCard << std::endl;
+	std::cout << "    Storm now at sector " << stormSector << std::endl;
+	std::cout << "    Next storm card prepared: " << nextStormCard << std::endl;
+}
+
+void Game::moveStorm(int sectorsToMove) {
+	stormSector += sectorsToMove;
+	while (stormSector > 18) {
+		stormSector -= 18;
+	}
+	while (stormSector < 1) {
+		stormSector += 18;
+	}
 }
 
 void Game::phaseSPICE_BLOW() {
@@ -84,7 +161,23 @@ void Game::phaseSPICE_BLOW() {
 
 void Game::phaseCHOAM_CHARITY() {
 	std::cout << "  CHOAM_CHARITY Phase" << std::endl;
-	// TODO: Distribute spice from CHOAM charity
+	for (int i = 0; i < playerCount; ++i) {
+		int currentSpice = players[i]->getSpice();
+		bool isBeneGesserit = (players[i]->getFactionIndex() == static_cast<int>(faction::BENE_GESSERIT));
+
+		bool shouldReceiveCharity = (currentSpice <= 1);
+		if (beneGesseritCharity && isBeneGesserit) {
+			shouldReceiveCharity = true;
+		}
+
+		if (shouldReceiveCharity && currentSpice < 2) {
+			int charityAmount = 2 - currentSpice;
+			players[i]->addSpice(charityAmount);
+			std::cout << "    " << players[i]->getFactionName() << " receives "
+			          << charityAmount << " spice from CHOAM (now at "
+			          << players[i]->getSpice() << ")" << std::endl;
+		}
+	}
 }
 
 void Game::phaseBIDDING() {
@@ -213,4 +306,19 @@ int Game::getPlayerCount() const {
 
 int Game::getTurnNumber() const { 
 	return turnNumber; 
+}
+
+int Game::getStormSector() const {
+	return stormSector;
+}
+
+int Game::getLastStormCard() const {
+	return lastStormCard;
+}
+
+int Game::getNextStormCard() const {
+	if (!hasNextStormCard) {
+		return 0;
+	}
+	return nextStormCard;
 }
