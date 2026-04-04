@@ -65,7 +65,7 @@ void GameMap::initializeMap() {
 	addTerritory("Bight of the Cliff", terrainType::desert,  0, {14, 15});
 	addTerritory("Wind Pass",          terrainType::desert,  0, {14, 15, 16, 17});
 	addTerritory("The Great Flat",     terrainType::desert, 10, {15});
-	addTerritory("Funeral Plain",      terrainType::desert,  0, {15});
+	addTerritory("Funeral Plain",      terrainType::desert,  6, {15});
 	addTerritory("The Greater Flat",   terrainType::desert,  0, {16});
 	addTerritory("Habbanya Erg",       terrainType::desert,  8, {16, 17});
 	addTerritory("Wind Pass North",    terrainType::desert,  6, {17, 18});
