@@ -9,6 +9,7 @@
 #include "map.hpp"
 #include "player.hpp"
 
+#define MIN_PLAYERS 2
 #define MAX_PLAYERS 6
 #define MAX_TURNS 14
 
@@ -44,6 +45,12 @@ class Game {
 		int playerCount;
 
 		int stormSector;
+		int lastStormCard;
+		int nextStormCard;
+		bool hasNextStormCard;
+		std::vector<int> stormDeck;
+		size_t stormDeckIndex;
+		bool beneGesseritCharity;
 		std::vector<int> playerTokenSectors;  // Token sector for each player (2, 5, 8, 11, 14, 17)
 		GameMap _map;
 		
@@ -51,7 +58,9 @@ class Game {
 		
 		// Phase processing
 		bool checkVictory();
-		void moveStorm();  // Move storm 1-6 sectors counter clockwise
+		void initializeStormDeck();
+		int drawStormCard();
+		void moveStorm(int sectorsToMove);  // Move storm counter-clockwise with wraparound
 		void phaseSTORM();
 		void phaseSPICE_BLOW();
 		void phaseCHOAM_CHARITY();
@@ -73,5 +82,8 @@ class Game {
 		
 		int getPlayerCount() const;
 		int getTurnNumber() const;
+		int getStormSector() const;
+		int getLastStormCard() const;
+		int getNextStormCard() const;
 		const Player* getPlayer(int index) const;
 };
