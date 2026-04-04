@@ -16,7 +16,7 @@ static const std::string FACTION_NAMES[] = {
 };
 
 Game::Game(int numPlayers, unsigned int seed) 
-	: turnNumber(0), currentPhase(0), turnOrder(), currentPlayerIndex(0),
+	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  useExtendedSpiceBlow(false), spiceDeck(), spiceDeckIndex(0),
@@ -86,16 +86,16 @@ void Game::initializeGame() {
 
 void Game::initializePhases() {
 	phases.clear();
-	phases.resize(9);
-	phases[0] = std::make_unique<StormPhase>();
-	phases[1] = std::make_unique<SpiceBlowPhase>();
-	phases[2] = std::make_unique<ChoamCharityPhase>();
-	// phases[3] = BIDDING (TODO)
-	phases[4] = std::make_unique<RevivalPhase>();
-	// phases[5] = SHIP_AND_MOVE (TODO)
-	// phases[6] = BATTLE (TODO)
-	// phases[7] = SPICE_COLLECTION (TODO)
-	// phases[8] = MENTAT_PAUSE (TODO)
+	phases.resize(NUM_PHASES);
+	phases[static_cast<int>(gamePhase::STORM)]          = std::make_unique<StormPhase>();
+	phases[static_cast<int>(gamePhase::SPICE_BLOW)]     = std::make_unique<SpiceBlowPhase>();
+	phases[static_cast<int>(gamePhase::CHOAM_CHARITY)]  = std::make_unique<ChoamCharityPhase>();
+	// phases[static_cast<int>(gamePhase::BIDDING)]     = BIDDING (TODO)
+	phases[static_cast<int>(gamePhase::REVIVAL)]        = std::make_unique<RevivalPhase>();
+	// phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)] = SHIP_AND_MOVE (TODO)
+	// phases[static_cast<int>(gamePhase::BATTLE)]      = BATTLE (TODO)
+	// phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = SPICE_COLLECTION (TODO)
+	// phases[static_cast<int>(gamePhase::MENTAT_PAUSE)] = MENTAT_PAUSE (TODO)
 }
 
 void Game::initializeStormDeck() {
@@ -217,10 +217,10 @@ void Game::processPhase() {
 		beneGesseritCharity, rng
 	);
 
-	if (currentPhase < static_cast<int>(phases.size()) && phases[currentPhase]) {
-		phases[currentPhase]->execute(ctx);
+	if (phases[static_cast<int>(currentPhase)]) {
+		phases[static_cast<int>(currentPhase)]->execute(ctx);
 	} else {
-		std::cout << "  Phase " << currentPhase << " (TODO)" << std::endl;
+		std::cout << "  Phase " << static_cast<int>(currentPhase) << " (TODO)" << std::endl;
 	}
 }
 
@@ -228,8 +228,9 @@ void Game::processTurn() {
 	turnNumber++;
 	std::cout << "\n--- Turn " << turnNumber << " ---" << std::endl;
 	
-	// Execute all 9 phases
-	for (currentPhase = 0; currentPhase < 9; ++currentPhase) {
+	// Execute all phases
+	for (int i = 0; i < NUM_PHASES; ++i) {
+		currentPhase = static_cast<gamePhase>(i);
 		processPhase();
 	}
 }

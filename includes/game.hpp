@@ -14,7 +14,7 @@
 #define MAX_PLAYERS 6
 #define MAX_TURNS 14
 
-enum class gamePhase {
+enum class gamePhase : int {
 	STORM,
     SPICE_BLOW,
     CHOAM_CHARITY,
@@ -23,8 +23,11 @@ enum class gamePhase {
     SHIP_AND_MOVE,
     BATTLE,
     SPICE_COLLECTION,
-    MENTAT_PAUSE
+    MENTAT_PAUSE,
+    COUNT
 };
+
+static constexpr int NUM_PHASES = static_cast<int>(gamePhase::COUNT);
 
 enum class faction {
 	ATREIDES,
@@ -50,7 +53,7 @@ class Game {
 	private:
 		// Turn and phase management
 		int turnNumber;
-		int currentPhase;
+		gamePhase currentPhase;
 		std::vector<std::string> turnOrder;
 		int currentPlayerIndex;
 
