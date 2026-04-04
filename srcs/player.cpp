@@ -10,31 +10,36 @@ Player::Player(int factionIdx, const std::string& factionName)
 Player::~Player() {}
 
 void Player::addSpice(int amount) {
-	if (amount < 0) return;
+	if (amount < 0) 
+		return;
 	spice += amount;
 }
 
 void Player::removeSpice(int amount) {
-	if (amount < 0) return;
+	if (amount < 0) 
+		return;
 	spice = std::max(0, spice - amount);
 }
 
 void Player::deployUnits(int count) {
-	if (count < 0) return;
+	if (count < 0) 
+		return;
 	int canDeploy = std::min(count, unitsReserve);
 	unitsReserve -= canDeploy;
 	unitsDeployed += canDeploy;
 }
 
 void Player::recallUnits(int count) {
-	if (count < 0) return;
+	if (count < 0) 
+		return;
 	int canRecall = std::min(count, unitsDeployed);
 	unitsDeployed -= canRecall;
 	unitsReserve += canRecall;
 }
 
 void Player::destroyUnits(int count) {
-	if (count < 0) return;
+	if (count < 0) 
+		return;
 	int aliveUnits = unitsReserve + unitsDeployed;
 	int canDestroy = std::min(count, aliveUnits);
 	
@@ -47,7 +52,8 @@ void Player::destroyUnits(int count) {
 }
 
 void Player::reviveUnits(int count) {
-	if (count < 0) return;
+	if (count < 0) 
+		return;
 	int canRevive = std::min(count, unitsDestroyed);
 	unitsDestroyed -= canRevive;
 	unitsReserve += canRevive;
