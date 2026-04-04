@@ -3,11 +3,12 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <map>
+#include <memory>
 #include <random>
 
 #include "map.hpp"
 #include "player.hpp"
+#include "phases/phase.hpp"
 
 #define MIN_PLAYERS 2
 #define MAX_PLAYERS 6
@@ -47,53 +48,49 @@ struct spiceCard {
 
 class Game {
 	private:
+		// Turn and phase management
 		int turnNumber;
-		gamePhase currentPhase;
+		int currentPhase;
 		std::vector<std::string> turnOrder;
 		int currentPlayerIndex;
 
+		// Players and map
 		std::vector<Player*> players;
 		int playerCount;
 
+		// Storm state
 		int stormSector;
 		int lastStormCard;
 		int nextStormCard;
 		bool hasNextStormCard;
 		std::vector<int> stormDeck;
-		size_t stormDeckIndex;
-		bool beneGesseritCharity;
+
+		// Spice state
 		bool useExtendedSpiceBlow;
 		std::vector<spiceCard> spiceDeck;
 		size_t spiceDeckIndex;
 		std::vector<spiceCard> spiceDiscardPileA;
 		std::vector<spiceCard> spiceDiscardPileB;
-		int baseFreeRevivesPerTurn;
-		int maxRevivesPerTurn;
-		int spiceCostPerPaidRevive;
-		bool useFactionReviveModifiers;
-		std::vector<int> playerTokenSectors;  // Token sector for each player (2, 5, 8, 11, 14, 17)
+
+		// Rule toggles
+		bool beneGesseritCharity;
+
+		// Map and utilities
+		std::vector<int> playerTokenSectors;
 		GameMap _map;
-		
-		std::mt19937 rng;  // Random number generator (seeded)
-		
-		// Phase processing
+		std::mt19937 rng;
+
+		// Phase handlers (Strategy pattern)
+		std::vector<std::unique_ptr<Phase>> phases;
+
+		// Helper methods
 		bool checkVictory();
+		void initializePhases();
 		void initializeStormDeck();
-		int drawStormCard();
 		void initializeSpiceDeck();
 		spiceCard drawSpiceCard();
 		void discardSpiceCard(const spiceCard& card, int discardPileIndex);
 		void resolveWormOnTerritory(const std::string& territoryName);
-		void moveStorm(int sectorsToMove);
-		void phaseSTORM();
-		void phaseSPICE_BLOW();
-		void phaseCHOAM_CHARITY();
-		void phaseBIDDING();
-		void phaseREVIVAL();
-		void phaseSHIP_AND_MOVE();
-		void phaseBATTLE();
-		void phaseSPICE_COLLECTION();
-		void phaseMENTAT_PAUSE();
 
 	public:
 		Game(int numPlayers, unsigned int seed = 42);
@@ -104,6 +101,7 @@ class Game {
 		void processTurn();
 		void runGame();
 		
+		// Getters
 		int getPlayerCount() const;
 		int getTurnNumber() const;
 		int getStormSector() const;

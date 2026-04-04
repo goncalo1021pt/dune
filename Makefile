@@ -1,11 +1,11 @@
 NAME = dune
 
-SRCS = $(wildcard $(SRCS_DIR)/*.cpp)
+SRCS = $(wildcard $(SRCS_DIR)/*.cpp $(SRCS_DIR)/**/*.cpp)
 SRCS_DIR = srcs
 
 INCLUDES = -I $(INCLUDES_DIR)
 INCLUDES_DIR = includes
-HEADERS = $(wildcard $(INCLUDES_DIR)/*.hpp $(INCLUDES_DIR)/*.h)
+HEADERS = $(wildcard $(INCLUDES_DIR)/*.hpp $(INCLUDES_DIR)/*.h $(INCLUDES_DIR)/**/*.hpp $(INCLUDES_DIR)/**/*.h)
 
 CXX = g++
 CXXFLAGS = -Wall -Wextra -Werror
@@ -28,7 +28,7 @@ $(NAME): $(OBJS)
 	@echo "$(GREEN)$(NAME)$(NC)ready!"
 
 $(OBJS_DIR)/%.o: $(SRCS_DIR)/%.cpp
-	@mkdir -p $(OBJS_DIR)
+	@mkdir -p $(dir $@)
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean: 
