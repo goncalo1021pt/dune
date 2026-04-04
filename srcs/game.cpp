@@ -44,6 +44,29 @@ void Game::initializeGame() {
 		turnOrder.push_back(FACTION_NAMES[i]);
 	}
 	
+	// Initialize storm at random sector (1-18)
+	std::uniform_int_distribution<> stormDist(1, 18);
+	stormSector = stormDist(rng);
+	std::cout << "\nStorm initialized at sector " << stormSector << std::endl;
+	
+	// Initialize player token sectors (2, 5, 8, 11, 14, 17)
+	// Pick playerCount tokens evenly spaced from the array
+	int tokenSectors[] = {2, 5, 8, 11, 14, 17};
+	std::uniform_int_distribution<> offsetDist(0, 5);
+	int randomOffset = offsetDist(rng);
+	
+	playerTokenSectors.clear();
+	int spacing = 6 / playerCount;
+	for (int i = 0; i < playerCount; ++i) {
+		int index = (randomOffset + i * spacing) % 6;
+		playerTokenSectors.push_back(tokenSectors[index]);
+	}
+	std::cout << "Player tokens placed at sectors:";
+	for (int i = 0; i < playerCount; ++i) {
+		std::cout << " P" << (i + 1) << "-" << playerTokenSectors[i];
+	}
+	std::cout << std::endl;
+	
 	std::cout << "\nPlayers initialized:" << std::endl;
 	for (int i = 0; i < playerCount; ++i) {
 		std::cout << "  " << players[i]->getFactionName() << ": " 
@@ -74,7 +97,19 @@ bool Game::checkVictory() {
 
 void Game::phaseSTORM() {
 	std::cout << "  STORM Phase" << std::endl;
-	// TODO: Move storm, apply damage
+	moveStorm();
+	std::cout << "    Storm now at sector " << stormSector << std::endl;
+}
+
+void Game::moveStorm() {
+	// Move storm 1-6 sectors counter-clockwise (with wraparound: 1 -> 18)
+	std::uniform_int_distribution<> movement(1, 6);
+	int sectorsToMove = movement(rng);
+	
+	stormSector -= sectorsToMove;
+	if (stormSector < 1) {
+		stormSector += 18;  // Wrap around: 0->18, -1->17, etc.
+	}
 }
 
 void Game::phaseSPICE_BLOW() {

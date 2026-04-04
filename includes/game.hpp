@@ -44,12 +44,14 @@ class Game {
 		int playerCount;
 
 		int stormSector;
+		std::vector<int> playerTokenSectors;  // Token sector for each player (2, 5, 8, 11, 14, 17)
 		GameMap _map;
 		
 		std::mt19937 rng;  // Random number generator (seeded)
 		
 		// Phase processing
 		bool checkVictory();
+		void moveStorm();  // Move storm 1-6 sectors counter clockwise
 		void phaseSTORM();
 		void phaseSPICE_BLOW();
 		void phaseCHOAM_CHARITY();
