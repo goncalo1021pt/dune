@@ -34,6 +34,17 @@ enum class faction {
 	SPACING_GUILD
 };
 
+enum class spiceCardType {
+	LOCATION,
+	WORM
+};
+
+struct spiceCard {
+	spiceCardType type;
+	std::string territoryName;
+	int spiceAmount;
+};
+
 class Game {
 	private:
 		int turnNumber;
@@ -51,6 +62,15 @@ class Game {
 		std::vector<int> stormDeck;
 		size_t stormDeckIndex;
 		bool beneGesseritCharity;
+		bool useExtendedSpiceBlow;
+		std::vector<spiceCard> spiceDeck;
+		size_t spiceDeckIndex;
+		std::vector<spiceCard> spiceDiscardPileA;
+		std::vector<spiceCard> spiceDiscardPileB;
+		int baseFreeRevivesPerTurn;
+		int maxRevivesPerTurn;
+		int spiceCostPerPaidRevive;
+		bool useFactionReviveModifiers;
 		std::vector<int> playerTokenSectors;  // Token sector for each player (2, 5, 8, 11, 14, 17)
 		GameMap _map;
 		
@@ -60,7 +80,11 @@ class Game {
 		bool checkVictory();
 		void initializeStormDeck();
 		int drawStormCard();
-		void moveStorm(int sectorsToMove);  // Move storm counter-clockwise with wraparound
+		void initializeSpiceDeck();
+		spiceCard drawSpiceCard();
+		void discardSpiceCard(const spiceCard& card, int discardPileIndex);
+		void resolveWormOnTerritory(const std::string& territoryName);
+		void moveStorm(int sectorsToMove);
 		void phaseSTORM();
 		void phaseSPICE_BLOW();
 		void phaseCHOAM_CHARITY();

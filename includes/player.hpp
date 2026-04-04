@@ -21,6 +21,7 @@ class Player {
 		int unitsReserve;
 		int unitsDeployed;
 		int unitsDestroyed;
+		int freeReviveModifier;
 
 		std::vector<std::string> treacheryCards;
 
@@ -40,6 +41,7 @@ class Player {
 		int getUnitsDeployed() const;
 		int getUnitsDestroyed() const;
 		int getTotalUnits() const;
+		int getFreeRevivesPerTurn() const;
 
 		// Resource management
 		void addSpice(int amount);
@@ -48,6 +50,7 @@ class Player {
 		void recallUnits(int count);
 		void destroyUnits(int count);
 		void reviveUnits(int count);
+		void setFreeReviveModifier(int modifier);
 
 		// Card management
 		void addTreacheryCard(const std::string& card);

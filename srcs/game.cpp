@@ -15,7 +15,8 @@ Game::Game(int numPlayers, unsigned int seed)
 	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(), stormDeckIndex(0),
-	  beneGesseritCharity(false),
+	  beneGesseritCharity(false), useExtendedSpiceBlow(false),
+	  spiceDeck(), spiceDeckIndex(0), spiceDiscardPileA(), spiceDiscardPileB(),
 	  _map(), rng(seed) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
@@ -41,6 +42,7 @@ void Game::initializeGame() {
 	
 	_map.initializeMap();
 	std::cout << "Map initialized with " << _map.getTerritories().size() << " territories" << std::endl;
+	initializeSpiceDeck();
 	
 	for (int i = 0; i < playerCount; ++i) {
 		turnOrder.push_back(FACTION_NAMES[i]);
@@ -50,8 +52,6 @@ void Game::initializeGame() {
 	initializeStormDeck();
 	std::cout << "\nStorm will be placed randomly during Turn 1 STORM phase" << std::endl;
 	
-	// Initialize player token sectors (2, 5, 8, 11, 14, 17)
-	// Pick playerCount tokens evenly spaced from the array
 	int tokenSectors[] = {2, 5, 8, 11, 14, 17};
 	std::uniform_int_distribution<> offsetDist(0, 5);
 	int randomOffset = offsetDist(rng);
@@ -82,6 +82,93 @@ void Game::initializeStormDeck() {
 	stormDeck = {1, 2, 3, 4, 5, 6};
 	std::shuffle(stormDeck.begin(), stormDeck.end(), rng);
 	stormDeckIndex = 0;
+}
+
+void Game::initializeSpiceDeck() {
+	spiceDeck.clear();
+	spiceDiscardPileA.clear();
+	spiceDiscardPileB.clear();
+	spiceDeckIndex = 0;
+
+	for (const auto& terr : _map.getTerritories()) {
+		territory* mutableTerritory = _map.getTerritory(terr.name);
+		if (mutableTerritory == nullptr) {
+			continue;
+		}
+
+		if (terr.terrain == terrainType::desert && terr.spiceAmount > 0) {
+			spiceCard locationCard;
+			locationCard.type = spiceCardType::LOCATION;
+			locationCard.territoryName = terr.name;
+			locationCard.spiceAmount = terr.spiceAmount;
+			spiceDeck.push_back(locationCard);
+		}
+
+		mutableTerritory->spiceAmount = 0;
+	}
+
+	for (int i = 0; i < 6; ++i) {
+		spiceCard wormCard;
+		wormCard.type = spiceCardType::WORM;
+		wormCard.territoryName = "";
+		wormCard.spiceAmount = 0;
+		spiceDeck.push_back(wormCard);
+	}
+
+	std::shuffle(spiceDeck.begin(), spiceDeck.end(), rng);
+}
+
+spiceCard Game::drawSpiceCard() {
+	if (spiceDeckIndex >= spiceDeck.size()) {
+		if (spiceDiscardPileA.empty() && spiceDiscardPileB.empty()) {
+			spiceCard fallback;
+			fallback.type = spiceCardType::WORM;
+			fallback.territoryName = "";
+			fallback.spiceAmount = 0;
+			return fallback;
+		}
+
+		spiceDeck.clear();
+		spiceDeck.insert(spiceDeck.end(), spiceDiscardPileA.begin(), spiceDiscardPileA.end());
+		spiceDeck.insert(spiceDeck.end(), spiceDiscardPileB.begin(), spiceDiscardPileB.end());
+		spiceDiscardPileA.clear();
+		spiceDiscardPileB.clear();
+		std::shuffle(spiceDeck.begin(), spiceDeck.end(), rng);
+		spiceDeckIndex = 0;
+		std::cout << "    Spice deck reshuffled from discard piles" << std::endl;
+	}
+
+	spiceCard card = spiceDeck[spiceDeckIndex];
+	spiceDeckIndex++;
+	return card;
+}
+
+void Game::discardSpiceCard(const spiceCard& card, int discardPileIndex) {
+	if (useExtendedSpiceBlow && discardPileIndex == 1) {
+		spiceDiscardPileB.push_back(card);
+		return;
+	}
+	spiceDiscardPileA.push_back(card);
+}
+
+void Game::resolveWormOnTerritory(const std::string& territoryName) {
+	territory* terr = _map.getTerritory(territoryName);
+	if (terr == nullptr) {
+		return;
+	}
+
+	int totalUnitsKilled = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		totalUnitsKilled += stack.normal_units + stack.elite_units;
+	}
+
+	terr->unitsPresent.clear();
+	int spiceDestroyed = terr->spiceAmount;
+	terr->spiceAmount = 0;
+
+	std::cout << "    Worm devours " << territoryName << ": "
+	          << totalUnitsKilled << " units and "
+	          << spiceDestroyed << " spice removed" << std::endl;
 }
 
 int Game::drawStormCard() {
@@ -156,7 +243,61 @@ void Game::moveStorm(int sectorsToMove) {
 
 void Game::phaseSPICE_BLOW() {
 	std::cout << "  SPICE_BLOW Phase" << std::endl;
-	// TODO: Trigger spice blow events
+
+	const int blowCount = useExtendedSpiceBlow ? 2 : 1;
+
+	for (int blowIndex = 0; blowIndex < blowCount; ++blowIndex) {
+		spiceCard card = drawSpiceCard();
+		const int discardPileIndex = useExtendedSpiceBlow ? blowIndex : 0;
+		const std::vector<spiceCard>& targetDiscardPile =
+			(useExtendedSpiceBlow && discardPileIndex == 1) ? spiceDiscardPileB : spiceDiscardPileA;
+
+		if (card.type == spiceCardType::WORM) {
+			std::cout << "    Draw " << (blowIndex + 1) << ": WORM" << std::endl;
+
+			if (turnNumber > 1) {
+				std::cout << "    NEXUS triggered (alliances not implemented yet)" << std::endl;
+			}
+
+			if (targetDiscardPile.empty()) {
+				std::cout << "    Worm discarded (no prior discarded card in this pile)" << std::endl;
+			} else {
+				const spiceCard& topDiscardCard = targetDiscardPile.back();
+				if (topDiscardCard.type != spiceCardType::LOCATION) {
+					std::cout << "    Worm resolves with no effect (top discard card is WORM)" << std::endl;
+				} else {
+					territory* targetTerritory = _map.getTerritory(topDiscardCard.territoryName);
+					if (targetTerritory == nullptr) {
+						std::cout << "    Worm resolves with no effect (invalid target territory)" << std::endl;
+					} else if (targetTerritory->spiceAmount <= 0) {
+						std::cout << "    Worm resolves on " << topDiscardCard.territoryName
+						          << " with no effect (no spice present)" << std::endl;
+					} else {
+						resolveWormOnTerritory(topDiscardCard.territoryName);
+					}
+				}
+			}
+
+			discardSpiceCard(card, discardPileIndex);
+			continue;
+		}
+
+		territory* terr = _map.getTerritory(card.territoryName);
+		if (terr == nullptr) {
+			std::cout << "    Draw " << (blowIndex + 1)
+			          << ": invalid territory card discarded" << std::endl;
+			discardSpiceCard(card, discardPileIndex);
+			continue;
+		}
+
+		terr->spiceAmount += card.spiceAmount;
+
+		std::cout << "    Draw " << (blowIndex + 1) << ": "
+		          << card.territoryName << " (" << card.spiceAmount << " spice)"
+		          << " -> territory now has " << terr->spiceAmount << std::endl;
+
+		discardSpiceCard(card, discardPileIndex);
+	}
 }
 
 void Game::phaseCHOAM_CHARITY() {
@@ -187,14 +328,40 @@ void Game::phaseBIDDING() {
 
 void Game::phaseREVIVAL() {
 	std::cout << "  REVIVAL Phase" << std::endl;
-	// Revive all destroyed units
+	const int maxRevivesPerTurn = 3;
+	const int spiceCostPerPaidRevive = 2;
+
 	for (int i = 0; i < playerCount; ++i) {
 		int destroyed = players[i]->getUnitsDestroyed();
-		if (destroyed > 0) {
-			players[i]->reviveUnits(destroyed);
-			std::cout << "    " << players[i]->getFactionName() << " revives " 
-			          << destroyed << " units" << std::endl;
+		if (destroyed <= 0) {
+			continue;
 		}
+
+		int freeRevives = players[i]->getFreeRevivesPerTurn();
+		int revivedForFree = std::min(std::min(freeRevives, maxRevivesPerTurn), destroyed);
+
+		int reviveSlotsLeft = maxRevivesPerTurn - revivedForFree;
+		int destroyedAfterFree = destroyed - revivedForFree;
+		int affordablePaidRevives = players[i]->getSpice() / spiceCostPerPaidRevive;
+		int revivedPaid = std::min(std::min(reviveSlotsLeft, destroyedAfterFree), affordablePaidRevives);
+		int spicePaid = revivedPaid * spiceCostPerPaidRevive;
+		int totalRevived = revivedForFree + revivedPaid;
+
+		if (totalRevived <= 0) {
+			continue;
+		}
+
+		if (spicePaid > 0) {
+			players[i]->removeSpice(spicePaid);
+		}
+		players[i]->reviveUnits(totalRevived);
+
+		std::cout << "    " << players[i]->getFactionName() << " revives "
+		          << totalRevived << " units (" << revivedForFree << " free";
+		if (revivedPaid > 0) {
+			std::cout << ", " << revivedPaid << " paid for " << spicePaid << " spice";
+		}
+		std::cout << ")" << std::endl;
 	}
 }
 
