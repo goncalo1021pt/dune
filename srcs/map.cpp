@@ -20,228 +20,256 @@ void GameMap::addTerritory(const std::string& name, terrainType terrain, int spi
 }
 
 void GameMap::initializeMap() {
-    territories.clear();
+	territories.clear();
 
-    addTerritory("Arrakeen",        terrainType::city, 0, {10});
-    addTerritory("Carthag",         terrainType::city, 0, {11});
-    addTerritory("Sietch Tabr",     terrainType::city, 0, {14});
-    addTerritory("Habbanya Sietch", terrainType::city, 0, {17});
-    addTerritory("Tuek's Sietch",   terrainType::city, 0, {5});
+	addTerritory("Arrakeen",        terrainType::city, 0, {10});
+	addTerritory("Carthag",         terrainType::city, 0, {11});
+	addTerritory("Sietch Tabr",     terrainType::city, 0, {14});
+	addTerritory("Habbanya Sietch", terrainType::city, 0, {17});
+	addTerritory("Tuek's Sietch",   terrainType::city, 0, {5});
 
-    getTerritory("Arrakeen")->hasTransporter  = true;
-    getTerritory("Arrakeen")->specialMovement = true;
-    getTerritory("Carthag")->hasTransporter   = true;
-    getTerritory("Carthag")->specialMovement  = true;
+	getTerritory("Arrakeen")->hasTransporter  = true;
+	getTerritory("Arrakeen")->specialMovement = true;
+	getTerritory("Carthag")->hasTransporter   = true;
+	getTerritory("Carthag")->specialMovement  = true;
 
-    addTerritory("Shield Wall",      terrainType::rock, 0, {8, 9});
-    addTerritory("Rim Wall West",    terrainType::rock, 0, {9}); 
-    addTerritory("False Wall East",  terrainType::rock, 0, {5, 6, 7, 8, 9});
-    addTerritory("False Wall South", terrainType::rock, 0, {4, 5});
-    addTerritory("Pasty Mesa",       terrainType::rock, 0, {5, 6, 7, 8});
-    addTerritory("Plastic Basin",    terrainType::rock, 0, {12, 13, 14});
-    addTerritory("False Wall West",  terrainType::rock, 0, {16, 17, 18});
+	addTerritory("Shield Wall",      terrainType::rock, 0, {8, 9});
+	addTerritory("Rim Wall West",    terrainType::rock, 0, {9}); 
+	addTerritory("False Wall East",  terrainType::rock, 0, {5, 6, 7, 8, 9});
+	addTerritory("False Wall South", terrainType::rock, 0, {4, 5});
+	addTerritory("Pasty Mesa",       terrainType::rock, 0, {5, 6, 7, 8});
+	addTerritory("Plastic Basin",    terrainType::rock, 0, {12, 13, 14});
+	addTerritory("False Wall West",  terrainType::rock, 0, {16, 17, 18});
 	
-    addTerritory("Cielago West",       terrainType::desert, 0,  {18, 1});
-    addTerritory("Meridian",           terrainType::desert, 0,  {1, 2});
-    addTerritory("Cielago Depression", terrainType::desert, 0,  {1, 2, 3});
-    addTerritory("Cielago North",      terrainType::desert, 8,  {1, 2, 3});
-    addTerritory("Cielago South",      terrainType::desert, 12, {2, 3});
-    addTerritory("Cielago East",       terrainType::desert, 0,  {3, 4});
-    addTerritory("Harg Pass",          terrainType::desert,  0, {4, 5});
-    addTerritory("South Mesa",         terrainType::desert, 0,  {4, 5, 6});
-    addTerritory("The Minor Erg",      terrainType::desert,  0, {5, 6, 7, 8});
-    addTerritory("Red Chasm",          terrainType::desert,  8, {7});
-    addTerritory("Gara Kulon",         terrainType::desert,  0, {8});
-    addTerritory("Basin",              terrainType::desert,  0, {9});
-    addTerritory("Hole in the Rock",   terrainType::desert,  0, {9});
-    addTerritory("Sihaya Ridge",       terrainType::desert,  0, {9});
-    addTerritory("Imperial Basin",     terrainType::desert,  0, {9, 10, 11});
-    addTerritory("Old Gap",            terrainType::desert,  6, {9, 10, 11});
-    addTerritory("Arsunt",             terrainType::desert,  0, {11, 12});
-    addTerritory("Tsimpo",             terrainType::desert,  0, {11, 12, 13});
-    addTerritory("Hagga Basin",        terrainType::desert,  6, {12, 13});
-    addTerritory("Broken Land",        terrainType::desert,  0, {11, 12});
-    addTerritory("Rock Outcroppings",  terrainType::desert, 6,  {13, 14});
-    addTerritory("Bight of the Cliff", terrainType::desert, 0,  {14, 15});
-    addTerritory("Wind Pass",          terrainType::desert, 0,  {14, 15, 16, 17});
-    addTerritory("Wind Pass North",    terrainType::desert, 6,  {17, 18});
-    addTerritory("The Great Flat",     terrainType::desert, 10, {15});
-    addTerritory("Funeral Plain",      terrainType::desert, 0,  {15});
-    addTerritory("The Greater Flat",   terrainType::desert, 0,  {16});
-    addTerritory("Habbanya Erg",       terrainType::desert, 8,  {16, 17});
-    addTerritory("Habbanya Ridge Flat",terrainType::desert, 0,  {17, 18});
+	addTerritory("Cielago West",       terrainType::desert, 0,  {18, 1});
+	addTerritory("Meridian",           terrainType::desert, 0,  {1, 2});
+	addTerritory("Cielago Depression", terrainType::desert, 0,  {1, 2, 3});
+	addTerritory("Cielago North",      terrainType::desert, 8,  {1, 2, 3});
+	addTerritory("Cielago South",      terrainType::desert, 12, {2, 3});
+	addTerritory("Cielago East",       terrainType::desert, 0,  {3, 4});
+	addTerritory("Harg Pass",          terrainType::desert,  0, {4, 5});
+	addTerritory("South Mesa",         terrainType::desert, 0,  {4, 5, 6});
+	addTerritory("The Minor Erg",      terrainType::desert,  0, {5, 6, 7, 8});
+	addTerritory("Red Chasm",          terrainType::desert,  8, {7});
+	addTerritory("Gara Kulon",         terrainType::desert,  0, {8});
+	addTerritory("Basin",              terrainType::desert,  0, {9});
+	addTerritory("Hole in the Rock",   terrainType::desert,  0, {9});
+	addTerritory("Sihaya Ridge",       terrainType::desert,  0, {9});
+	addTerritory("Imperial Basin",     terrainType::desert,  0, {9, 10, 11});
+	addTerritory("Old Gap",            terrainType::desert,  6, {9, 10, 11});
+	addTerritory("Arsunt",             terrainType::desert,  0, {11, 12});
+	addTerritory("Broken Land",        terrainType::desert,  0, {11, 12});
+	addTerritory("Tsimpo",             terrainType::desert,  0, {11, 12, 13});
+	addTerritory("Hagga Basin",        terrainType::desert,  6, {12, 13});
+	addTerritory("Rock Outcroppings",  terrainType::desert, 6,  {13, 14});
+	addTerritory("Bight of the Cliff", terrainType::desert, 0,  {14, 15});
+	addTerritory("Wind Pass",          terrainType::desert, 0,  {14, 15, 16, 17});
+	addTerritory("The Great Flat",     terrainType::desert, 10, {15});
+	addTerritory("Funeral Plain",      terrainType::desert, 0,  {15});
+	addTerritory("The Greater Flat",   terrainType::desert, 0,  {16});
+	addTerritory("Habbanya Erg",       terrainType::desert, 8,  {16, 17});
+	addTerritory("Wind Pass North",    terrainType::desert, 6,  {17, 18});
+	addTerritory("Habbanya Ridge Flat",terrainType::desert, 0,  {17, 18});
 
-    addTerritory("Polar Sink", terrainType::northPole, 0,
-        {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18});
+	addTerritory("Polar Sink", terrainType::northPole, 0,
+		{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18});
 
-    linkNeighbours();
+	linkNeighbours();
 }
 
 void GameMap::linkNeighbours() {
+	//CITIES
+	linkTerritoryNeighbours("Arrakeen", {
+		"Rim Wall West", "Imperial Basin", 
+		"Old Gap"
+	});
+	linkTerritoryNeighbours("Carthag", {
+		"Arsunt", "Imperial Basin", 
+		"Tsimpo", "hagga Basin"
+	});
+	linkTerritoryNeighbours("Sietch Tabr", {
+		"Plastic Basin", "Rock Outcroppings", 
+		"Bight of the Cliff"
+	});
+	linkTerritoryNeighbours("Habbanya Sietch", {
+		"Habbanya Ridge Flat"
+	});
+	linkTerritoryNeighbours("Tuek's Sietch", {
+		"False Wall South", "South Mesa", 
+		"Pasty Mesa"
+	});
 
-    // POLAR SINK touches everything on the inner ring
-    linkTerritoryNeighbours("Polar Sink", {
-        "Imperial Basin", "Arsunt", "Tsimpo", "Hagga Basin",
-        "False Wall West", "Wind Pass North", "Wind Pass",
-        "Harg Pass", "False Wall East", "The Minor Erg",
-        "Pasty Mesa", "Cielago North", "Cielago West",
-        "Cielago Depression", "Cielago South", "Meridian",
-        "Funeral Plain", "The Greater Flat", "The Great Flat",
-        "Habbanya Erg"
-    });
+	//ROCK
+	linkTerritoryNeighbours("Shield Wall", {
+		"Hole in the Rock", "Gara Kulon",
+		"False Wall East", "Imperial Basin"
+		"Sihaya Ridge", "Pasty Mesa",
+		"The Minor Erg"
+	});
+	linkTerritoryNeighbours("Rim Wall West", {
+		"Arrakeen", "Imperial Basin",
+		"Basin", "Hole in the Rock"
+		"Old Gap"
+	});
+	linkTerritoryNeighbours("False Wall East", {
+		"Shield Wall", "The Minor Erg", 
+		"Imperial Basin", "Harg Pass"
+		"Polar Sink"
+	});
+	linkTerritoryNeighbours("False Wall South", {
+		"Tuek's Sietch", "Pasty Mesa", 
+		"South Mesa", "Harg Pass",
+		"The Minor Erg", "Cielago East"
+		"Cielago North"
+	});
+	linkTerritoryNeighbours("Pasty Mesa", {
+		"Tuek's Sietch", "False Wall South", 
+		"Red Chasm", "Gara Kulon",
+		"The Minor Erg", "Shield Wall",
+		"South Mesa"
+	});
+	linkTerritoryNeighbours("Plastic Basin", {
+		"Sietch Tabr", "Rock Outcroppings", 
+		"Hagga Basin", "Tsimpo",
+		"Wind Pass", "Bight of the Cliff",
+		"Funeral Plain", "The Great Flat"
+	});
+	linkTerritoryNeighbours("False Wall West", {
+		"Wind Pass", "Habbanya Erg",
+		"The Greater Flat", "Habbanya Ridge Flat",
+		"Cielago West"
+	});
 
-    // --- STRONGHOLDS ---
-    linkTerritoryNeighbours("Arrakeen", {
-        "Imperial Basin", "Basin", "Rim Wall West",
-        "Hole in the Rock", "Shield Wall", "Old Gap"
-    });
-    linkTerritoryNeighbours("Carthag", {
-        "Imperial Basin", "Tsimpo", "Basin", "Old Gap"
-    });
-    linkTerritoryNeighbours("Sietch Tabr", {
-        "Plastic Basin", "Rock Outcroppings", "Wind Pass", "Broken Land"
-    });
-    linkTerritoryNeighbours("Habbanya Sietch", {
-        "Habbanya Ridge Flat", "Habbanya Erg", "False Wall West", "False Wall South"
-    });
-    linkTerritoryNeighbours("Tuek's Sietch", {
-        "South Mesa", "False Wall South", "Pasty Mesa"
-    });
 
-    // --- ROCK TERRITORIES ---
-    linkTerritoryNeighbours("Broken Land", {
-        "Sietch Tabr", "Plastic Basin", "Hagga Basin", "Tsimpo"
-    });
-    linkTerritoryNeighbours("Tsimpo", {
-        "Carthag", "Broken Land", "Hagga Basin", "Arsunt",
-        "Imperial Basin", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Basin", {
-        "Arrakeen", "Carthag", "Old Gap", "Sihaya Ridge"
-    });
-    linkTerritoryNeighbours("Rim Wall West", {
-        "Arrakeen", "Imperial Basin"
-    });
-    linkTerritoryNeighbours("Old Gap", {
-        "Arrakeen", "Carthag", "Basin", "Broken Land"
-    });
-    linkTerritoryNeighbours("Sihaya Ridge", {
-        "Basin", "Gara Kulon", "Shield Wall", "Hole in the Rock"
-    });
-    linkTerritoryNeighbours("Gara Kulon", {
-        "Sihaya Ridge", "Shield Wall", "Pasty Mesa"
-    });
-    linkTerritoryNeighbours("Hole in the Rock", {
-        "Arrakeen", "Sihaya Ridge", "Shield Wall"
-    });
-    linkTerritoryNeighbours("Shield Wall", {
-        "Arrakeen", "Hole in the Rock", "Sihaya Ridge",
-        "Gara Kulon", "False Wall East", "Imperial Basin"
-    });
-    linkTerritoryNeighbours("False Wall East", {
-        "Shield Wall", "Pasty Mesa", "The Minor Erg", "Harg Pass", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Pasty Mesa", {
-        "Tuek's Sietch", "South Mesa", "False Wall South",
-        "Gara Kulon", "Shield Wall", "False Wall East", "The Minor Erg", "Red Chasm"
-    });
-    linkTerritoryNeighbours("Red Chasm", {
-        "Pasty Mesa", "The Minor Erg"
-    });
-    linkTerritoryNeighbours("South Mesa", {
-        "Tuek's Sietch", "Habbanya Sietch", "False Wall South",
-        "Cielago East", "Pasty Mesa"
-    });
-    linkTerritoryNeighbours("False Wall South", {
-        "Tuek's Sietch", "Habbanya Sietch", "South Mesa",
-        "Cielago East", "Cielago Depression"
-    });
-    linkTerritoryNeighbours("False Wall West", {
-        "Habbanya Sietch", "Habbanya Erg", "Cielago North",
-        "The Greater Flat", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Plastic Basin", {
-        "Sietch Tabr", "Broken Land", "Rock Outcroppings", "Wind Pass North"
-    });
-    linkTerritoryNeighbours("Rock Outcroppings", {
-        "Sietch Tabr", "Plastic Basin", "Bight of the Cliff", "The Great Flat"
-    });
-    linkTerritoryNeighbours("Bight of the Cliff", {
-        "Rock Outcroppings", "The Great Flat", "Funeral Plain"
-    });
-    linkTerritoryNeighbours("Habbanya Ridge Flat", {
-        "Habbanya Sietch", "Habbanya Erg", "Cielago West", "Cielago Depression"
-    });
+	//DESERT 
+	linkTerritoryNeighbours("Cielago West", {
+		"Habbanya Ridge Flat", "Cielago North", 
+		"Meridian", "Wind Pass North",
+		"Wind Pass", "Fasle Wall West"
+		"Cielago Depression"
+	});
+	linkTerritoryNeighbours("Meridian", {
+		"Cielago West", "Cielago South",
+		"Habbanya Ridge Flat", "Cielago Depression",
+	});
+	linkTerritoryNeighbours("Cielago Depression", {
+		"Cielago West", "Meridian",
+		"Cielago North", "Cielago South",
+		"Cielago East"
+	});
+	linkTerritoryNeighbours("Cielago North", {
+		"Cielago West", "Cielago Depression",
+		"Cielago East", "Wind Pass North",
+		"Harg Pass", "False Wall South", 
+		"Polar Sink"
+	});
+	linkTerritoryNeighbours("Cielago South", {
+		"Cielago West", "Meridian", 
+		"Cielago Depression"
+	});
+	linkTerritoryNeighbours("Cielago East", {
+		"False Wall South", "Cielago Depression",
+		"Cielago South", "South Mesa",
+		"Cielago North"
+	});
+	linkTerritoryNeighbours("Harg Pass", {
+		"False Wall South", "Fasle Wall East",
+		"Cielago North", "The Minor Erg"
+		"Polar Sink"
+	});
+	linkTerritoryNeighbours("South Mesa", {
+		"Tuek's Sietch", "False Wall South", 
+		"Cielago East",
+		"Pasty Mesa", "Polar Sink"
+	});
+	linkTerritoryNeighbours("The Minor Erg", {
+		"False Wall East", "Pasty Mesa", "Red Chasm",
+		"Harg Pass", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Red Chasm", {
+		"False Wall East", "Pasty Mesa", "The Minor Erg"
+	});
+	linkTerritoryNeighbours("Gara Kulon", {
+		"Shield Wall", "False Wall East", "Sihaya Ridge"
+	});
+	linkTerritoryNeighbours("Basin", {
+		"Arrakeen", "Old Gap", "Sihaya Ridge"
+	});
+	linkTerritoryNeighbours("Hole in the Rock", {
+		"Arrakeen", "Shield Wall", "Sihaya Ridge"
+	});
+	linkTerritoryNeighbours("Sihaya Ridge", {
+		"Basin", "Hole in the Rock", "Shield Wall", "Gara Kulon"
+	});
+	linkTerritoryNeighbours("Imperial Basin", {
+		"Arrakeen", "Carthag", "Rim Wall West", "Arsunt",
+		"Tsimpo", "Shield Wall", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Old Gap", {
+		"Arrakeen", "Carthag", "Basin", "Broken Land"
+	});
+	linkTerritoryNeighbours("Arsunt", {
+		"Carthag", "Imperial Basin", "Tsimpo", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Broken Land", {
+		"Carthag", "Old Gap", "Tsimpo", "Hagga Basin", "Plastic Basin"
+	});
+	linkTerritoryNeighbours("Tsimpo", {
+		"Carthag", "Arsunt", "Imperial Basin", "Broken Land",
+		"Hagga Basin", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Hagga Basin", {
+		"Tsimpo", "Broken Land", "Plastic Basin",
+		"Wind Pass North", "Arsunt", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Rock Outcroppings", {
+		"Sietch Tabr", "Plastic Basin", "Bight of the Cliff", "Wind Pass"
+	});
+	linkTerritoryNeighbours("Bight of the Cliff", {
+		"Rock Outcroppings", "Wind Pass", "The Great Flat", "Funeral Plain"
+	});
+	linkTerritoryNeighbours("Wind Pass", {
+		"Sietch Tabr", "False Wall West", "Habbanya Sietch",
+		"Rock Outcroppings", "Bight of the Cliff", "The Great Flat",
+		"Funeral Plain", "Wind Pass North", "Polar Sink"
+	});
+	linkTerritoryNeighbours("The Great Flat", {
+		"Bight of the Cliff", "Wind Pass", "Funeral Plain",
+		"The Greater Flat", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Funeral Plain", {
+		"Bight of the Cliff", "Wind Pass", "The Great Flat", "Polar Sink"
+	});
+	linkTerritoryNeighbours("The Greater Flat", {
+		"The Great Flat", "Wind Pass", "Habbanya Erg", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Habbanya Erg", {
+		"Habbanya Sietch", "False Wall West", "The Greater Flat",
+		"Habbanya Ridge Flat", "Wind Pass North", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Wind Pass North", {
+		"False Wall West", "Plastic Basin", "Hagga Basin",
+		"Habbanya Erg", "Cielago North", "Wind Pass", "Polar Sink"
+	});
+	linkTerritoryNeighbours("Habbanya Ridge Flat", {
+		"Habbanya Sietch", "Habbanya Erg", "Cielago North",
+		"Cielago West", "Cielago Depression"
+	});
 
-    // --- DESERT TERRITORIES ---
-    linkTerritoryNeighbours("Imperial Basin", {
-        "Arrakeen", "Carthag", "Rim Wall West", "Shield Wall",
-        "Tsimpo", "Arsunt", "Hagga Basin", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Arsunt", {
-        "Imperial Basin", "Tsimpo", "Hagga Basin", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Hagga Basin", {
-        "Arsunt", "Tsimpo", "Broken Land", "Plastic Basin",
-        "Wind Pass North", "Imperial Basin", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Wind Pass North", {
-        "Hagga Basin", "Plastic Basin", "Wind Pass", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Wind Pass", {
-        "Wind Pass North", "Sietch Tabr", "Rock Outcroppings",
-        "Funeral Plain", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Funeral Plain", {
-        "Wind Pass", "Bight of the Cliff", "The Great Flat", "Polar Sink"
-    });
-    linkTerritoryNeighbours("The Great Flat", {
-        "Funeral Plain", "Rock Outcroppings", "Bight of the Cliff",
-        "The Greater Flat", "Habbanya Erg", "Polar Sink"
-    });
-    linkTerritoryNeighbours("The Greater Flat", {
-        "The Great Flat", "Habbanya Erg", "False Wall West",
-        "Cielago North", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Habbanya Erg", {
-        "The Great Flat", "The Greater Flat", "False Wall West",
-        "Habbanya Ridge Flat", "Habbanya Sietch", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Cielago North", {
-        "False Wall West", "The Greater Flat", "Cielago West",
-        "Cielago Depression", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Cielago West", {
-        "Habbanya Ridge Flat", "Cielago North", "Cielago South",
-        "Meridian", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Cielago South", {
-        "Cielago West", "Meridian", "Cielago Depression"
-    });
-    linkTerritoryNeighbours("Cielago Depression", {
-        "Cielago North", "Cielago West", "Cielago South",
-        "Cielago East", "False Wall South", "Habbanya Ridge Flat", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Cielago East", {
-        "Cielago Depression", "False Wall South", "South Mesa"
-    });
-    linkTerritoryNeighbours("Meridian", {
-        "Cielago West", "Cielago South", "Polar Sink"
-    });
-    linkTerritoryNeighbours("The Minor Erg", {
-        "False Wall East", "Red Chasm", "Pasty Mesa", "Harg Pass", "Polar Sink"
-    });
-    linkTerritoryNeighbours("Harg Pass", {
-        "False Wall East", "The Minor Erg", "Polar Sink"
-    });
+	// --- POLAR SINK — borders all inner-ring territories ---
+	linkTerritoryNeighbours("Polar Sink", {
+		"Arrakeen",
+		"Cielago West", "Meridian", "Cielago Depression", "Cielago North",
+		"Cielago South", "Harg Pass", "South Mesa", "The Minor Erg",
+		"False Wall East", "Pasty Mesa", "Imperial Basin", "Arsunt",
+		"Tsimpo", "Hagga Basin", "Wind Pass North", "Habbanya Erg",
+		"The Greater Flat", "The Great Flat", "Funeral Plain",
+		"Wind Pass", "False Wall West"
+	});
 }
 
-// -----------------------------------------------------------------------------
-// Everything below this line is unchanged from your original map.cpp
-// -----------------------------------------------------------------------------
-
 void GameMap::linkTerritoryNeighbours(const std::string& territoryName,
-                                      const std::vector<std::string>& neighbourNames) {
+									  const std::vector<std::string>& neighbourNames) {
 	territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return;
 
@@ -278,7 +306,7 @@ const std::vector<territory>& GameMap::getTerritories() const {
 }
 
 void GameMap::addUnitsToTerritory(const std::string& territoryName, int factionIndex, 
-                               int normalUnits, int eliteUnits) {
+							   int normalUnits, int eliteUnits) {
 	territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return;
 
@@ -298,7 +326,7 @@ void GameMap::addUnitsToTerritory(const std::string& territoryName, int factionI
 }
 
 void GameMap::removeUnitsFromTerritory(const std::string& territoryName, int factionIndex, 
-                                    int normalUnits, int eliteUnits) {
+									int normalUnits, int eliteUnits) {
 	territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return;
 
