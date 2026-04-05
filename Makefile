@@ -4,7 +4,7 @@ SRCS = $(wildcard $(SRCS_DIR)/*.cpp $(SRCS_DIR)/**/*.cpp)
 SRCS_DIR = srcs
 
 INCLUDES = -I $(INCLUDES_DIR)
-INCLUDES_DIR = includes
+INCLUDES_DIR = includes/headers
 HEADERS = $(wildcard $(INCLUDES_DIR)/*.hpp $(INCLUDES_DIR)/*.h $(INCLUDES_DIR)/**/*.hpp $(INCLUDES_DIR)/**/*.h)
 
 CXX = g++

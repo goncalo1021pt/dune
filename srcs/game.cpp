@@ -6,6 +6,7 @@
 #include "phases/spice_collection_phase.hpp"
 #include "phases/choam_charity_phase.hpp"
 #include "phases/revival_phase.hpp"
+#include "phases/bidding_phase.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -39,7 +40,7 @@ Game::Game(int numPlayers, unsigned int seed)
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  useExtendedSpiceBlow(false), spiceDeck(), spiceDeckIndex(0),
 	  spiceDiscardPileA(), spiceDiscardPileB(), beneGesseritCharity(false),
-	  playerTokenSectors(), _map(), rng(seed), phases(), interactiveMode(false) {
+	  playerTokenSectors(), _map(), rng(seed), treacheryDeck(rng), phases(), interactiveMode(false) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -59,7 +60,7 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  useExtendedSpiceBlow(false), spiceDeck(), spiceDeckIndex(0),
 	  spiceDiscardPileA(), spiceDiscardPileB(), beneGesseritCharity(false),
-	  playerTokenSectors(), _map(), rng(seed), phases(), interactiveMode(interactive) {
+	  playerTokenSectors(), _map(), rng(seed), treacheryDeck(rng), phases(), interactiveMode(interactive) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -104,6 +105,10 @@ int Game::getNextStormCard() const {
 	return nextStormCard;
 }
 
+bool Game::isInteractiveMode() const { 
+	return interactiveMode; 
+}
+
 void Game::initializeGame() {
 	std::cout << "\n=== Initializing Dune Game ===" << std::endl;
 	std::cout << "Number of players: " << playerCount << std::endl;
@@ -111,6 +116,7 @@ void Game::initializeGame() {
 	_map.initializeMap();
 	std::cout << "Map initialized with " << _map.getTerritories().size() << " territories" << std::endl;
 	initializeSpiceDeck();
+	treacheryDeck.initialize();
 	
 	for (int i = 0; i < playerCount; ++i) {
 		turnOrder.push_back(FACTION_NAMES[i]);
@@ -152,7 +158,7 @@ void Game::initializePhases() {
 	phases[static_cast<int>(gamePhase::STORM)]          = std::make_unique<StormPhase>();
 	phases[static_cast<int>(gamePhase::SPICE_BLOW)]     = std::make_unique<SpiceBlowPhase>();
 	phases[static_cast<int>(gamePhase::CHOAM_CHARITY)]  = std::make_unique<ChoamCharityPhase>();
-	// phases[static_cast<int>(gamePhase::BIDDING)]     = BIDDING (TODO)
+	phases[static_cast<int>(gamePhase::BIDDING)]        = std::make_unique<BiddingPhase>();
 	phases[static_cast<int>(gamePhase::REVIVAL)]        = std::make_unique<RevivalPhase>();
 	phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)]  = std::make_unique<ShipAndMovePhase>();
 	// phases[static_cast<int>(gamePhase::BATTLE)]      = BATTLE (TODO)
@@ -259,6 +265,10 @@ const Player* Game::getPlayer(int index) const {
 	return nullptr;
 }
 
+const std::vector<territory>& Game::getTerritories() const {
+	return _map.getTerritories();
+}
+
 bool Game::checkVictory() {
 	for (int i = 0; i < playerCount; ++i) {
 		if (_map.countControlledTerritories(i) >= 3) {
@@ -276,7 +286,7 @@ void Game::processPhase() {
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, useExtendedSpiceBlow,
 		spiceDeck, spiceDeckIndex, spiceDiscardPileA, spiceDiscardPileB,
-		beneGesseritCharity, rng, interactiveMode
+		treacheryDeck, beneGesseritCharity, rng, interactiveMode
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {

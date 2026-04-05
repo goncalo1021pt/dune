@@ -6,3 +6,4 @@
 
 #include "game.hpp"
 #include "player.hpp"
+#include "debug.hpp"

@@ -9,6 +9,7 @@
 #include "settings.hpp"
 #include "map.hpp"
 #include "player.hpp"
+#include "cards/treachery_deck.hpp"
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
 
@@ -49,45 +50,39 @@ struct spiceCard {
 
 class Game {
 	private:
-		// Turn and phase management
 		int turnNumber;
 		gamePhase currentPhase;
 		std::vector<std::string> turnOrder;
 		int currentPlayerIndex;
 
-		// Players and map
 		std::vector<Player*> players;
 		int playerCount;
 
-		// Storm state
 		int stormSector;
 		int lastStormCard;
 		int nextStormCard;
 		bool hasNextStormCard;
 		std::vector<int> stormDeck;
 
-		// Spice state
 		bool useExtendedSpiceBlow;
 		std::vector<spiceCard> spiceDeck;
 		size_t spiceDeckIndex;
 		std::vector<spiceCard> spiceDiscardPileA;
 		std::vector<spiceCard> spiceDiscardPileB;
 
-		// Rule toggles
 		bool beneGesseritCharity;
 
-		// Map and utilities
 		std::vector<int> playerTokenSectors;
 		GameMap _map;
 		std::mt19937 rng;
 
+		TreacheryDeck treacheryDeck;
+
 		// Phase handlers (Strategy pattern)
 		std::vector<std::unique_ptr<Phase>> phases;
 
-		// Testing/Debug
 		bool interactiveMode;
 
-		// Helper methods
 		bool checkVictory();
 		void initializePhases();
 		void initializeStormDeck();
@@ -113,5 +108,6 @@ class Game {
 		int getLastStormCard() const;
 		int getNextStormCard() const;
 		const Player* getPlayer(int index) const;
-		bool isInteractiveMode() const { return interactiveMode; }
+		const std::vector<territory>& getTerritories() const;
+		bool isInteractiveMode() const;
 };

@@ -7,6 +7,7 @@
 // Forward declarations
 class Player;
 class GameMap;
+class TreacheryDeck;
 struct spiceCard;
 enum class gamePhase : int;
 
@@ -38,6 +39,9 @@ struct PhaseContext {
 	std::vector<spiceCard>& spiceDiscardPileA;
 	std::vector<spiceCard>& spiceDiscardPileB;
 
+	// Treachery state
+	TreacheryDeck& treacheryDeck;
+
 	// Rule toggles
 	bool& beneGesseritCharity;
 
@@ -64,6 +68,7 @@ struct PhaseContext {
 		size_t& spiceDeckIndex_,
 		std::vector<spiceCard>& spiceDiscardPileA_,
 		std::vector<spiceCard>& spiceDiscardPileB_,
+		TreacheryDeck& treacheryDeck_,
 		bool& beneGesseritCharity_,
 		std::mt19937& rng_,
 		bool interactiveMode_ = false
@@ -76,6 +81,7 @@ struct PhaseContext {
 		  useExtendedSpiceBlow(useExtendedSpiceBlow_),
 		  spiceDeck(spiceDeck_), spiceDeckIndex(spiceDeckIndex_),
 		  spiceDiscardPileA(spiceDiscardPileA_), spiceDiscardPileB(spiceDiscardPileB_),
+		  treacheryDeck(treacheryDeck_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
 		  interactiveMode(interactiveMode_) {}
 };
