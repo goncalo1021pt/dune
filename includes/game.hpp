@@ -84,6 +84,9 @@ class Game {
 		// Phase handlers (Strategy pattern)
 		std::vector<std::unique_ptr<Phase>> phases;
 
+		// Testing/Debug
+		bool interactiveMode;
+
 		// Helper methods
 		bool checkVictory();
 		void initializePhases();
@@ -95,6 +98,7 @@ class Game {
 
 	public:
 		Game(int numPlayers, unsigned int seed = 42);
+		Game(int numPlayers, unsigned int seed, bool interactive);
 		~Game();
 
 		void initializeGame();
@@ -109,4 +113,5 @@ class Game {
 		int getLastStormCard() const;
 		int getNextStormCard() const;
 		const Player* getPlayer(int index) const;
+		bool isInteractiveMode() const { return interactiveMode; }
 };

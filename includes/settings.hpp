@@ -10,6 +10,7 @@ namespace GameConstants {
     constexpr int CHARITY_THRESHOLD = 2;
 	constexpr int STARTING_SPICE = 0;
 	constexpr int STARTING_UNITS = 20;
+    constexpr int STARTING_SPECIAL_UNITS = 0;
 	constexpr int MAX_TREACHERY_CARDS = 4;
 	constexpr int MAX_TRAITOR_CARDS = 4;
 }

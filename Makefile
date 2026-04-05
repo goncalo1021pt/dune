@@ -29,7 +29,7 @@ $(NAME): $(OBJS)
 
 $(OBJS_DIR)/%.o: $(SRCS_DIR)/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean: 
 	@rm -rf $(OBJS_DIR)

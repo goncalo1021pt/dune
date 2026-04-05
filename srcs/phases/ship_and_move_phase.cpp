@@ -2,6 +2,7 @@
 #include "game.hpp"
 #include "map.hpp"
 #include "player.hpp"
+#include "interactive_input.hpp"
 #include <iostream>
 #include <algorithm>
 #include <queue>
@@ -42,8 +43,24 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 		return false;
 	}
 	
-	// AI decides deployment
-	DeploymentDecision decision = aiDecideDeployment(ctx, player);
+	// Get valid deployment targets
+	std::vector<std::string> validTargets = getValidDeploymentTargets(ctx, player->getFactionIndex());
+	
+	// Get deployment decision (interactive or AI)
+	DeploymentDecision decision;
+	
+	if (ctx.interactiveMode) {
+		// Interactive mode: get player choice
+		auto interactiveChoice = InteractiveInput::getDeploymentDecision(ctx, player, validTargets);
+		decision.territoryName = interactiveChoice.territoryName;
+		decision.normalUnits = interactiveChoice.normalUnits;
+		decision.eliteUnits = interactiveChoice.eliteUnits;
+		decision.shouldDeploy = interactiveChoice.shouldDeploy;
+		decision.spiceCost = 0; // Will be calculated in deployUnits
+	} else {
+		// AI mode: use AI decision
+		decision = aiDecideDeployment(ctx, player);
+	}
 	
 	if (!decision.shouldDeploy) {
 		std::cout << "    Shipment: Skipped" << std::endl;

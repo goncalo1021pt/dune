@@ -6,6 +6,7 @@
 
 // Forward declaration
 struct territory;
+class InteractiveInput;
 
 /**
  * ShipAndMovePhase: Handles player deployments and movements
@@ -61,17 +62,8 @@ private:
 	 */
 	bool executePlayerMovement(PhaseContext& ctx, Player* player);
 	
-	/**
-	 * Calculate maximum movement range for a faction
-	 * - Returns 3 if controlling Arrakeen or Carthag (special movement)
-	 * - Returns 1 otherwise (base movement)
-	 */
 	int calculateMovementRange(PhaseContext& ctx, int factionIndex) const;
 	
-	/**
-	 * Get all territories reachable from source within movement range
-	 * Uses BFS to find all territories within N steps
-	 */
 	std::vector<std::string> getReachableTerritories(
 		PhaseContext& ctx, 
 		const std::string& sourceTerritoryName,
@@ -79,26 +71,15 @@ private:
 		int factionIndex
 	) const;
 	
-	/**
-	 * Move units from one territory to another
-	 * Returns true if movement was successful
-	 */
 	bool moveUnits(PhaseContext& ctx, int factionIndex,
 	               const std::string& fromTerritory, 
 	               const std::string& toTerritory,
 	               int normalUnits, int eliteUnits);
 	
-	/**
-	 * Get list of territories where faction has units
-	 */
 	std::vector<std::string> getTerritoriesWithUnits(PhaseContext& ctx, int factionIndex) const;
 	
 	// === AI DECISION METHODS (Placeholder) ===
-	
-	/**
-	 * AI decides which territory to deploy to and how many units
-	 * Returns: {territoryName, normalUnits, eliteUnits, spiceCost}
-	 */
+
 	struct DeploymentDecision {
 		std::string territoryName;
 		int normalUnits;
@@ -109,10 +90,6 @@ private:
 	
 	DeploymentDecision aiDecideDeployment(PhaseContext& ctx, Player* player) const;
 	
-	/**
-	 * AI decides which units to move and where
-	 * Returns: {fromTerritory, toTerritory, normalUnits, eliteUnits}
-	 */
 	struct MovementDecision {
 		std::string fromTerritory;
 		std::string toTerritory;
@@ -125,15 +102,9 @@ private:
 	
 	// === VALIDATION METHODS ===
 	
-	/**
-	 * Check if deployment is valid
-	 */
 	bool isValidDeployment(PhaseContext& ctx, int factionIndex, 
 	                       const std::string& territoryName, int unitCount) const;
 	
-	/**
-	 * Check if movement is valid
-	 */
 	bool isValidMovement(PhaseContext& ctx, int factionIndex,
 	                     const std::string& fromTerritory, 
 	                     const std::string& toTerritory,
