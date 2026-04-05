@@ -4,10 +4,11 @@
 Player::Player(int factionIdx, const std::string& factionName) 
 	: factionName(factionName), factionIndex(factionIdx), homeSectorIndex(factionIdx),
 	  spice(STARTING_SPICE), unitsReserve(STARTING_UNITS), eliteUnitsReserve(STARTING_SPECIAL_UNITS),
-	  unitsDeployed(0), unitsDestroyed(0), freeReviveModifier(1) {
+	  unitsDeployed(0), unitsDestroyed(0), freeReviveModifier(1), aliveLeaders(), deadLeaders() {
 }
 
-Player::~Player() {}
+Player::~Player() {
+}
 
 void Player::addSpice(int amount) {
 	if (amount < 0) 
@@ -161,4 +162,36 @@ const std::vector<std::string>& Player::getTreacheryCards() const {
 
 const std::vector<std::string>& Player::getTraitorCards() const { 
 	return traitorCards; 
+}
+
+void Player::addLeader(const Leader& leader) {
+	aliveLeaders.push_back(leader);
+}
+
+void Player::killLeader(size_t aliveIndex) {
+	if (aliveIndex < aliveLeaders.size()) {
+		deadLeaders.push_back(aliveLeaders[aliveIndex]);
+		aliveLeaders.erase(aliveLeaders.begin() + aliveIndex);
+	}
+}
+
+void Player::reviveLeader(size_t deadIndex) {
+	if (deadIndex < deadLeaders.size()) {
+		aliveLeaders.push_back(deadLeaders[deadIndex]);
+		deadLeaders.erase(deadLeaders.begin() + deadIndex);
+	}
+}
+
+const std::vector<Leader>& Player::getAliveLeaders() const {
+	return aliveLeaders;
+}
+
+const std::vector<Leader>& Player::getDeadLeaders() const {
+	return deadLeaders;
+}
+
+void Player::resetLeaderBattleStatus() {
+	for (auto& leader : aliveLeaders) {
+		leader.hasBattled = false;
+	}
 }

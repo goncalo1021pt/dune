@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "leader.hpp"
 #include "phases/phase_context.hpp"
 #include "phases/storm_phase.hpp"
 #include "phases/spice_blow_phase.hpp"
@@ -49,6 +50,9 @@ Game::Game(int numPlayers, unsigned int seed)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
+		// Assign default leader (level between 1-5 based on player count variance)
+		int leaderLevel = (i % 5) + 1;
+		players.back()->addLeader(Leader::createDefault(leaderLevel));
 	}
 
 	initializePhases();
@@ -69,6 +73,9 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
+		// Assign default leader (level between 1-5 based on player count variance)
+		int leaderLevel = (i % 5) + 1;
+		players.back()->addLeader(Leader::createDefault(leaderLevel));
 	}
 
 	initializePhases();
