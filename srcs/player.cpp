@@ -3,8 +3,8 @@
 
 Player::Player(int factionIdx, const std::string& factionName) 
 	: factionName(factionName), factionIndex(factionIdx), homeSectorIndex(factionIdx),
-	  spice(STARTING_SPICE), unitsReserve(STARTING_UNITS), unitsDeployed(0),
-	  unitsDestroyed(0), freeReviveModifier(1) {
+	  spice(STARTING_SPICE), unitsReserve(STARTING_UNITS), eliteUnitsReserve(STARTING_SPECIAL_UNITS),
+	  unitsDeployed(0), unitsDestroyed(0), freeReviveModifier(1) {
 }
 
 Player::~Player() {}
@@ -59,6 +59,36 @@ void Player::reviveUnits(int count) {
 	unitsReserve += canRevive;
 }
 
+void Player::deployEliteUnits(int count) {
+	if (count < 0) 
+		return;
+	int canDeploy = std::min(count, eliteUnitsReserve);
+	eliteUnitsReserve -= canDeploy;
+	// Elite units count as deployed, but stored separately
+}
+
+void Player::recallEliteUnits(int count) {
+	if (count < 0) 
+		return;
+	eliteUnitsReserve += count;
+}
+
+void Player::destroyEliteUnits(int count) {
+	if (count < 0) 
+		return;
+	int canDestroy = std::min(count, eliteUnitsReserve);
+	eliteUnitsReserve -= canDestroy;
+	unitsDestroyed += canDestroy;
+}
+
+void Player::reviveEliteUnits(int count) {
+	if (count < 0) 
+		return;
+	int canRevive = std::min(count, unitsDestroyed);
+	unitsDestroyed -= canRevive;
+	eliteUnitsReserve += canRevive;
+}
+
 void Player::setFreeReviveModifier(int modifier) {
 	freeReviveModifier = modifier;
 }
@@ -103,6 +133,10 @@ int Player::getSpice() const {
 
 int Player::getUnitsReserve() const { 
 	return unitsReserve; 
+}
+
+int Player::getEliteUnitsReserve() const { 
+	return eliteUnitsReserve; 
 }
 
 int Player::getUnitsDeployed() const { 

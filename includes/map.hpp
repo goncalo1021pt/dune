@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include "settings.hpp"
 
 
 enum class faction;

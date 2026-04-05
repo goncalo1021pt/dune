@@ -44,6 +44,9 @@ struct PhaseContext {
 	// Random number generator
 	std::mt19937& rng;
 
+	// Testing/Debug
+	bool interactiveMode;
+
 	// Constructor: bind all references
 	PhaseContext(
 		int& turnNumber_,
@@ -62,7 +65,8 @@ struct PhaseContext {
 		std::vector<spiceCard>& spiceDiscardPileA_,
 		std::vector<spiceCard>& spiceDiscardPileB_,
 		bool& beneGesseritCharity_,
-		std::mt19937& rng_
+		std::mt19937& rng_,
+		bool interactiveMode_ = false
 	)
 		: turnNumber(turnNumber_), currentPhase(currentPhase_),
 		  players(players_), playerCount(playerCount_), map(map_),
@@ -72,5 +76,6 @@ struct PhaseContext {
 		  useExtendedSpiceBlow(useExtendedSpiceBlow_),
 		  spiceDeck(spiceDeck_), spiceDeckIndex(spiceDeckIndex_),
 		  spiceDiscardPileA(spiceDiscardPileA_), spiceDiscardPileB(spiceDiscardPileB_),
-		  beneGesseritCharity(beneGesseritCharity_), rng(rng_) {}
+		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
+		  interactiveMode(interactiveMode_) {}
 };
