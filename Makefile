@@ -39,6 +39,10 @@ fclean: clean
 	@rm -f $(NAME)
 	@echo "$(RED)$(NAME)$(NC)cleaned!"
 
+fcount:
+	wc -l $(SRCS) $(HEADERS)
+
+
 re: fclean all
 
 .PHONY: all clean fclean re

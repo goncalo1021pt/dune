@@ -8,18 +8,15 @@ void signal_handler(int signal, siginfo_t *info, void *context)
 	(void)context;
 	if (signal == SIGINT)
 	{
-		// Ctrl+C - graceful exit
 		std::cout << "\n\n[SIGNAL] Interrupt received. Exiting...\n";
 		exit(0);
 	}
 	else if (signal == SIGQUIT)
 	{
-		// Ctrl+\ - print game state
 		GameDebugger::printGameState();
 	}
 	else if (signal == SIGUSR1)	
 	{
-		// SIGUSR1 - print game state (alternative signal)
 		GameDebugger::printGameState();
 	}
 }

@@ -52,7 +52,7 @@ class Game {
 	private:
 		int turnNumber;
 		gamePhase currentPhase;
-		std::vector<std::string> turnOrder;
+		std::vector<int> turnOrder;  // Player indices in turn order (recalculated after each storm)
 		int currentPlayerIndex;
 
 		std::vector<Player*> players;
@@ -90,6 +90,7 @@ class Game {
 		spiceCard drawSpiceCard();
 		void discardSpiceCard(const spiceCard& card, int discardPileIndex);
 		void resolveWormOnTerritory(const std::string& territoryName);
+		void setTurnOrder();  // Recalculate turn order based on sector positions
 
 	public:
 		Game(int numPlayers, unsigned int seed = 42);
@@ -110,4 +111,5 @@ class Game {
 		const Player* getPlayer(int index) const;
 		const std::vector<territory>& getTerritories() const;
 		bool isInteractiveMode() const;
+		const std::vector<int>& getTurnOrder() const;
 };

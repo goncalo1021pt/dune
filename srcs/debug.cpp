@@ -28,6 +28,17 @@ void GameDebugger::printGameState() {
 	std::cout << "  Storm Sector: " << gameInstance->getStormSector() << "\n";
 	std::cout << "  Next Storm Card: " << gameInstance->getNextStormCard() << "\n";
 
+	// Turn order
+	const auto& turnOrder = gameInstance->getTurnOrder();
+	if (!turnOrder.empty()) {
+		std::cout << "  Turn Order: ";
+		for (size_t i = 0; i < turnOrder.size(); i++) {
+			std::cout << gameInstance->getPlayer(turnOrder[i])->getFactionName();
+			if (i < turnOrder.size() - 1) std::cout << " -> ";
+		}
+		std::cout << "\n";
+	}
+
 	// Player info
 	std::cout << "\n[PLAYERS]\n";
 	for (int i = 0; i < gameInstance->getPlayerCount(); i++) {

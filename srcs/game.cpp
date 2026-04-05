@@ -127,10 +127,6 @@ void Game::initializeGame() {
 	initializeSpiceDeck();
 	treacheryDeck.initialize();
 	
-	for (int i = 0; i < playerCount; ++i) {
-		turnOrder.push_back(FACTION_NAMES[i]);
-	}
-	
 	stormSector = 0;
 	initializeStormDeck();
 	std::cout << "\nStorm will be placed randomly during Turn 1 STORM phase" << std::endl;
@@ -289,6 +285,48 @@ const std::vector<territory>& Game::getTerritories() const {
 	return _map.getTerritories();
 }
 
+const std::vector<int>& Game::getTurnOrder() const {
+	return turnOrder;
+}
+
+void Game::setTurnOrder() {
+	// Clear and recalculate turn order based on sector positions
+	// Counter-clockwise from storm sector (sector numbers increasing)
+	// First player is in the sector right after the storm
+	
+	turnOrder.clear();
+	
+	// Create list of (player index, next sector counter-clockwise from storm)
+	std::vector<std::pair<int, int>> playersWithSectors;
+	
+	for (int i = 0; i < playerCount; ++i) {
+		int tokenSector = playerTokenSectors[i];
+		// Distance counter-clockwise from storm to this player's token
+		int distance = (tokenSector - stormSector + 18) % 18;
+		playersWithSectors.push_back({i, distance});
+	}
+	
+	// Sort by distance (smallest distance = closest counter-clockwise = first in turn order)
+	std::sort(playersWithSectors.begin(), playersWithSectors.end(),
+		[](const auto& a, const auto& b) { return a.second < b.second; });
+	
+	// Build turn order from sorted list
+	for (const auto& pair : playersWithSectors) {
+		turnOrder.push_back(pair.first);
+	}
+	
+	// Print the calculated turn order
+	std::cout << "\nTurn Order (Counter-clockwise from Storm at Sector " << stormSector << "):" << std::endl;
+	for (size_t i = 0; i < turnOrder.size(); ++i) {
+		int playerIdx = turnOrder[i];
+		int tokenSector = playerTokenSectors[playerIdx];
+		int distance = (tokenSector - stormSector + 18) % 18;
+		std::cout << "  " << (i + 1) << ". " << players[playerIdx]->getFactionName() 
+				  << " (Sector " << tokenSector << ", distance " << distance << ")" << std::endl;
+	}
+	std::cout << std::endl;
+}
+
 bool Game::checkVictory() {
 	for (int i = 0; i < playerCount; ++i) {
 		if (_map.countControlledTerritories(i) >= 3) {
@@ -313,6 +351,11 @@ void Game::processPhase() {
 		phases[static_cast<int>(currentPhase)]->execute(ctx);
 	} else {
 		std::cout << "  " << getPhaseName(currentPhase) << " Phase (TODO)" << std::endl;
+	}
+	
+	// Update turn order after storm phase
+	if (currentPhase == gamePhase::STORM) {
+		setTurnOrder();
 	}
 }
 
