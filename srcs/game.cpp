@@ -2,8 +2,10 @@
 #include "phases/phase_context.hpp"
 #include "phases/storm_phase.hpp"
 #include "phases/spice_blow_phase.hpp"
-#include "phases/simple_phases.hpp"
 #include "phases/ship_and_move_phase.hpp"
+#include "phases/spice_collection_phase.hpp"
+#include "phases/choam_charity_phase.hpp"
+#include "phases/revival_phase.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -154,7 +156,7 @@ void Game::initializePhases() {
 	phases[static_cast<int>(gamePhase::REVIVAL)]        = std::make_unique<RevivalPhase>();
 	phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)]  = std::make_unique<ShipAndMovePhase>();
 	// phases[static_cast<int>(gamePhase::BATTLE)]      = BATTLE (TODO)
-	// phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = SPICE_COLLECTION (TODO)
+	phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = std::make_unique<SpiceCollectionPhase>();
 	// phases[static_cast<int>(gamePhase::MENTAT_PAUSE)] = MENTAT_PAUSE (TODO)
 }
 
