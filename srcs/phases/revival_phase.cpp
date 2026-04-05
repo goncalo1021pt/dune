@@ -1,29 +1,7 @@
-#include "phases/simple_phases.hpp"
-#include "game.hpp"
+#include "phases/revival_phase.hpp"
 #include "player.hpp"
 #include <iostream>
 #include <algorithm>
-
-void ChoamCharityPhase::execute(PhaseContext& ctx) {
-	std::cout << "  CHOAM_CHARITY Phase" << std::endl;
-	for (int i = 0; i < ctx.playerCount; ++i) {
-		int currentSpice = ctx.players[i]->getSpice();
-		bool isBeneGesserit = (ctx.players[i]->getFactionIndex() == static_cast<int>(faction::BENE_GESSERIT));
-
-		bool shouldReceiveCharity = (currentSpice <= 1);
-		if (ctx.beneGesseritCharity && isBeneGesserit) {
-			shouldReceiveCharity = true;
-		}
-
-		if (shouldReceiveCharity && currentSpice < 2) {
-			int charityAmount = 2 - currentSpice;
-			ctx.players[i]->addSpice(charityAmount);
-			std::cout << "    " << ctx.players[i]->getFactionName() << " receives "
-			          << charityAmount << " spice from CHOAM (now at "
-			          << ctx.players[i]->getSpice() << ")" << std::endl;
-		}
-	}
-}
 
 void RevivalPhase::execute(PhaseContext& ctx) {
 	std::cout << "  REVIVAL Phase" << std::endl;
