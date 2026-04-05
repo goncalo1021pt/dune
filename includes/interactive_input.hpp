@@ -19,6 +19,14 @@ public:
 		bool shouldDeploy;
 	};
 
+	struct MovementChoice {
+		std::string fromTerritory;
+		std::string toTerritory;
+		int normalUnits;
+		int eliteUnits;
+		bool shouldMove;
+	};
+
 	/**
 	 * Present deployment options to player and get their choice
 	 */
@@ -26,6 +34,16 @@ public:
 		PhaseContext& ctx, 
 		Player* player,
 		const std::vector<std::string>& validTargets
+	);
+
+	/**
+	 * Present movement options to player and get their choice
+	 */
+	static MovementChoice getMovementDecision(
+		PhaseContext& ctx,
+		Player* player,
+		const std::vector<std::string>& territoriesWithUnits,
+		int movementRange
 	);
 
 	/**

@@ -4,6 +4,8 @@
 #include "map.hpp"
 #include <iostream>
 #include <algorithm>
+#include <queue>
+#include <set>
 
 InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 	PhaseContext& ctx,
@@ -71,6 +73,158 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 		.normalUnits = normalUnits,
 		.eliteUnits = eliteUnits,
 		.shouldDeploy = (normalUnits + eliteUnits) > 0
+	};
+}
+
+InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
+	PhaseContext& ctx,
+	Player* player,
+	const std::vector<std::string>& territoriesWithUnits,
+	int movementRange) {
+
+	displayGameState(ctx, player);
+	
+	std::cout << "\n  === Movement Phase ===" << std::endl;
+	std::cout << "  Movement range: " << movementRange << std::endl;
+	
+	// Select source territory
+	std::cout << "\n  Territories with your units:" << std::endl;
+	std::cout << "  0. Skip" << std::endl;
+	for (size_t i = 0; i < territoriesWithUnits.size(); ++i) {
+		std::cout << "  " << (i + 1) << ". " << territoriesWithUnits[i] << std::endl;
+	}
+	
+	std::string fromTerritory;
+	bool validFromSelected = false;
+	std::string input;
+	std::string toTerritory;
+	
+	do {
+		std::cout << "  Select territory to move FROM (0 to skip): ";
+		std::cin >> input;
+		
+		if (input == "0" || input == "skip" || input == "Skip") {
+			std::cout << "  Movement: Skipped" << std::endl;
+			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .shouldMove = false};
+		}
+		
+		try {
+			int index = std::stoi(input);
+			if (index >= 1 && index <= static_cast<int>(territoriesWithUnits.size())) {
+				fromTerritory = territoriesWithUnits[index - 1];
+				validFromSelected = true;
+			} else {
+				std::cout << "  Invalid number. Please enter 1-" << territoriesWithUnits.size() << " or 0 to skip.\n";
+			}
+		} catch (...) {
+			auto it = std::find(territoriesWithUnits.begin(), territoriesWithUnits.end(), input);
+			if (it != territoriesWithUnits.end()) {
+				fromTerritory = input;
+				validFromSelected = true;
+			} else {
+				std::cout << "  Invalid territory. Please try again.\n";
+			}
+		}
+	} while (!validFromSelected);
+	
+	// Compute reachable territories from source using BFS
+	std::vector<std::string> reachableTerritories;
+	{
+		const territory* source = ctx.map.getTerritory(fromTerritory);
+		if (source != nullptr) {
+			std::queue<std::pair<const territory*, int>> bfsQueue;
+			std::set<std::string> visited;
+			
+			bfsQueue.push({source, 0});
+			visited.insert(source->name);
+			
+			while (!bfsQueue.empty()) {
+				auto [currentTerr, distance] = bfsQueue.front();
+				bfsQueue.pop();
+				
+				// Add to reachable (exclude source)
+				if (distance > 0) {
+					reachableTerritories.push_back(currentTerr->name);
+				}
+				
+				// Don't explore beyond movement range
+				if (distance >= movementRange) {
+					continue;
+				}
+				
+				// Explore neighbors
+				for (const territory* neighbor : currentTerr->neighbourPtrs) {
+					if (visited.find(neighbor->name) == visited.end()) {
+						visited.insert(neighbor->name);
+						bfsQueue.push({neighbor, distance + 1});
+					}
+				}
+			}
+		}
+	}
+	
+	if (reachableTerritories.empty()) {
+		std::cout << "  No reachable destinations from " << fromTerritory << std::endl;
+		return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .shouldMove = false};
+	}
+	
+	// Display reachable territories menu
+	std::cout << "\n  Reachable territories from " << fromTerritory << ":" << std::endl;
+	std::cout << "  0. Cancel" << std::endl;
+	for (size_t i = 0; i < reachableTerritories.size(); ++i) {
+		std::cout << "  " << (i + 1) << ". " << reachableTerritories[i] << std::endl;
+	}
+	
+	// Let player select destination
+	bool validToSelected = false;
+	do {
+		std::cout << "  Select territory to move TO (0 to cancel) or enter name: ";
+		std::cin >> input;
+		
+		if (input == "0" || input == "cancel" || input == "Cancel") {
+			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .shouldMove = false};
+		}
+		
+		// Try number first
+		try {
+			int index = std::stoi(input);
+			if (index >= 1 && index <= static_cast<int>(reachableTerritories.size())) {
+				toTerritory = reachableTerritories[index - 1];
+				validToSelected = true;
+			} else {
+				std::cout << "  Invalid number. Please enter 1-" << reachableTerritories.size() << " or 0 to cancel.\n";
+			}
+		} catch (...) {
+			// Try as territory name
+			auto it = std::find(reachableTerritories.begin(), reachableTerritories.end(), input);
+			if (it != reachableTerritories.end()) {
+				toTerritory = input;
+				validToSelected = true;
+			} else {
+				std::cout << "  Invalid territory. Please try again.\n";
+			}
+		}
+	} while (!validToSelected);
+	
+	// Ask how many units to move
+	std::cout << "  How many normal units to move? (0+): ";
+	int normalUnits = 0;
+	std::cin >> normalUnits;
+	normalUnits = std::max(0, normalUnits);
+	
+	int eliteUnits = 0;
+	if (player->getEliteUnitsReserve() > 0) {
+		std::cout << "  How many elite units to move? (0-" << player->getEliteUnitsReserve() << "): ";
+		std::cin >> eliteUnits;
+		eliteUnits = std::max(0, std::min(eliteUnits, player->getEliteUnitsReserve()));
+	}
+	
+	return {
+		.fromTerritory = fromTerritory,
+		.toTerritory = toTerritory,
+		.normalUnits = normalUnits,
+		.eliteUnits = eliteUnits,
+		.shouldMove = (normalUnits + eliteUnits) > 0
 	};
 }
 

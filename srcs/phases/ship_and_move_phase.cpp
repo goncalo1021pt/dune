@@ -194,8 +194,21 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	std::cout << "    Movement range: " << movementRange 
 	          << (movementRange == 3 ? " (special movement)" : "") << std::endl;
 	
-	// AI decides movement (for now, just one movement action per turn)
-	MovementDecision decision = aiDecideMovement(ctx, player, movementRange);
+	// Get movement decision (interactive or AI)
+	MovementDecision decision;
+	
+	if (ctx.interactiveMode) {
+		// Interactive mode: get player choice
+		auto interactiveChoice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
+		decision.fromTerritory = interactiveChoice.fromTerritory;
+		decision.toTerritory = interactiveChoice.toTerritory;
+		decision.normalUnits = interactiveChoice.normalUnits;
+		decision.eliteUnits = interactiveChoice.eliteUnits;
+		decision.shouldMove = interactiveChoice.shouldMove;
+	} else {
+		// AI mode: use AI decision
+		decision = aiDecideMovement(ctx, player, movementRange);
+	}
 	
 	if (!decision.shouldMove) {
 		std::cout << "    Movement: Skipped" << std::endl;
