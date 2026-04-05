@@ -154,6 +154,17 @@ void Game::initializeGame() {
 		std::cout << "  " << players[i]->getFactionName() << ": " 
 		          << players[i]->getSpice() << " spice, " 
 		          << players[i]->getUnitsReserve() << " units in reserve" << std::endl;
+		
+		// Print leader info
+		const auto& aliveLeaders = players[i]->getAliveLeaders();
+		if (!aliveLeaders.empty()) {
+			std::cout << "    Leaders: ";
+			for (size_t j = 0; j < aliveLeaders.size(); j++) {
+				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
+				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << std::endl;
+		}
 	}
 	
 	std::cout << "=== Game Initialized ===" << std::endl;
@@ -306,6 +317,25 @@ void Game::processPhase() {
 void Game::processTurn() {
 	turnNumber++;
 	std::cout << "\n--- Turn " << turnNumber << " ---" << std::endl;
+	
+	// Reset leader battle status at start of turn
+	for (int i = 0; i < playerCount; ++i) {
+		players[i]->resetLeaderBattleStatus();
+	}
+	
+	// Print faction leaders
+	std::cout << "Leaders at start of turn: " << std::endl;
+	for (int i = 0; i < playerCount; ++i) {
+		const auto& aliveLeaders = players[i]->getAliveLeaders();
+		if (!aliveLeaders.empty()) {
+			std::cout << "  " << players[i]->getFactionName() << ": ";
+			for (size_t j = 0; j < aliveLeaders.size(); j++) {
+				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
+				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << "\n";
+		}
+	}
 	
 	// Execute all phases
 	for (int i = 0; i < NUM_PHASES; ++i) {

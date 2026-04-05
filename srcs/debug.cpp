@@ -44,6 +44,29 @@ void GameDebugger::printGameState() {
 		std::cout << " | Deployed: " << std::setw(2) << p->getUnitsDeployed();
 		std::cout << "\n";
 
+		// Leaders
+		const auto& aliveLeaders = p->getAliveLeaders();
+		const auto& deadLeaders = p->getDeadLeaders();
+		
+		if (!aliveLeaders.empty()) {
+			std::cout << "    Alive Leaders: ";
+			for (size_t j = 0; j < aliveLeaders.size(); j++) {
+				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
+				if (aliveLeaders[j].hasBattled) std::cout << "[battled]";
+				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << "\n";
+		}
+		
+		if (!deadLeaders.empty()) {
+			std::cout << "    Dead Leaders: ";
+			for (size_t j = 0; j < deadLeaders.size(); j++) {
+				std::cout << deadLeaders[j].name << " (power:" << deadLeaders[j].power << ")";
+				if (j < deadLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << "\n";
+		}
+
 		// Treachery cards
 		const auto& treacheryCards = p->getTreacheryCards();
 		if (!treacheryCards.empty()) {
