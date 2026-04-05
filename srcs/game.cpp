@@ -50,9 +50,10 @@ Game::Game(int numPlayers, unsigned int seed)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
-		// Assign default leader (level between 1-5 based on player count variance)
-		int leaderLevel = (i % 5) + 1;
-		players.back()->addLeader(Leader::createDefault(leaderLevel));
+		// Assign all 5 default leaders (power 1-5) to each faction
+		for (int power = 1; power <= 5; ++power) {
+			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
+		}
 	}
 
 	initializePhases();
@@ -73,9 +74,10 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
-		// Assign default leader (level between 1-5 based on player count variance)
-		int leaderLevel = (i % 5) + 1;
-		players.back()->addLeader(Leader::createDefault(leaderLevel));
+		// Assign all 5 default leaders (power 1-5) to each faction
+		for (int power = 1; power <= 5; ++power) {
+			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
+		}
 	}
 
 	initializePhases();

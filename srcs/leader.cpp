@@ -13,3 +13,10 @@ Leader Leader::createDefault(int level) {
 	std::string name = "default_leader_" + std::to_string(level);
 	return Leader(name, level);
 }
+
+Leader Leader::createForFaction(const std::string& factionName, int level) {
+	if (level < 1) level = 1;
+	if (level > 5) level = 5;
+	std::string name = factionName + "_" + std::to_string(level);
+	return Leader(name, level);
+}

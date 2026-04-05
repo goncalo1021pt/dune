@@ -11,5 +11,6 @@ struct Leader {
 
 	// Static factory for default leaders
 	static Leader createDefault(int level);
+	static Leader createForFaction(const std::string& factionName, int level);
 };
 
