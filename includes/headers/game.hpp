@@ -74,7 +74,6 @@ class Game {
 		bool checkVictory();
 		void initializePhases();
 		void initializeStormDeck();
-		void resolveWormOnTerritory(const std::string& territoryName);
 		void setTurnOrder();  // Recalculate turn order based on sector positions
 
 	public:

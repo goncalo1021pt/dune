@@ -189,26 +189,6 @@ void Game::initializeStormDeck() {
 	std::shuffle(stormDeck.begin(), stormDeck.end(), rng);
 }
 
-void Game::resolveWormOnTerritory(const std::string& territoryName) {
-	territory* terr = _map.getTerritory(territoryName);
-	if (terr == nullptr) {
-		return;
-	}
-
-	int totalUnitsKilled = 0;
-	for (const auto& stack : terr->unitsPresent) {
-		totalUnitsKilled += stack.normal_units + stack.elite_units;
-	}
-
-	terr->unitsPresent.clear();
-	int spiceDestroyed = terr->spiceAmount;
-	terr->spiceAmount = 0;
-
-	std::cout << "    Worm devours " << territoryName << ": "
-	          << totalUnitsKilled << " units and "
-	          << spiceDestroyed << " spice removed" << std::endl;
-}
-
 const Player* Game::getPlayer(int index) const {
 	if (index >= 0 && index < playerCount) {
 		return players[index];
