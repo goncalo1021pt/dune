@@ -15,9 +15,10 @@
 void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	std::cout << "  SHIP_AND_MOVE Phase" << std::endl;
 	
-	// Each player takes their turn in order
+	// Each player takes their turn in order (using turn order from storm calculation)
 	for (int i = 0; i < ctx.playerCount; ++i) {
-		Player* player = ctx.players[i];
+		int playerIndex = ctx.turnOrder[i];
+		Player* player = ctx.players[playerIndex];
 		std::cout << "\n    --- " << player->getFactionName() << "'s Turn ---" << std::endl;
 		
 		// 1. Shipment (deployment)

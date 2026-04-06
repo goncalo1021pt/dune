@@ -15,16 +15,24 @@ void SpiceCollectionPhase::execute(PhaseContext& ctx) {
 }
 
 void SpiceCollectionPhase::addCitySpiceProduction(PhaseContext& ctx) {
-	std::cout << "    City Spice Production:" << std::endl;
+	std::cout << "    City Tax Collection:" << std::endl;
 	
-	ctx.map.getTerritory("Arrakeen")->spiceAmount += 2;
-	std::cout << "      Arrakeen produces 2 spice" << std::endl;
+	// Cities don't hold spice; instead they provide tax (spice income) to their controller
+	const std::string cities[] = {"Arrakeen", "Carthag", "Tuek's Sietch"};
+	const int cityTaxAmount[] = {2, 2, 1}; // Arrakeen: 2, Carthag: 2, Tuek's Sietch: 1
 	
-	ctx.map.getTerritory("Carthag")->spiceAmount += 2;
-	std::cout << "      Carthag produces 2 spice" << std::endl;
-	
-	ctx.map.getTerritory("Tuek's Sietch")->spiceAmount += 1;
-	std::cout << "      Tuek's Sietch produces 1 spice" << std::endl;
+	for (int i = 0; i < 3; ++i) {
+		territory* city = ctx.map.getTerritory(cities[i]);
+		if (city != nullptr && !city->unitsPresent.empty()) {
+			// City provides tax to all factions that have units there
+			for (const auto& unitStack : city->unitsPresent) {
+				int tax = cityTaxAmount[i];
+				ctx.players[unitStack.factionOwner]->addSpice(tax);
+				std::cout << "      " << ctx.players[unitStack.factionOwner]->getFactionName()
+				          << " collects " << tax << " spice tax from " << cities[i] << std::endl;
+			}
+		}
+	}
 }
 
 void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext& ctx) {

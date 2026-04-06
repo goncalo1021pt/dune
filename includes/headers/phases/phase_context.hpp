@@ -8,7 +8,7 @@
 class Player;
 class GameMap;
 class TreacheryDeck;
-struct spiceCard;
+class SpiceDeck;
 enum class gamePhase : int;
 
 /**
@@ -33,11 +33,7 @@ struct PhaseContext {
 	std::vector<int>& stormDeck;
 
 	// Spice state
-	bool& useExtendedSpiceBlow;
-	std::vector<spiceCard>& spiceDeck;
-	size_t& spiceDeckIndex;
-	std::vector<spiceCard>& spiceDiscardPileA;
-	std::vector<spiceCard>& spiceDiscardPileB;
+	SpiceDeck& spiceDeck;
 
 	// Treachery state
 	TreacheryDeck& treacheryDeck;
@@ -66,11 +62,7 @@ struct PhaseContext {
 		int& nextStormCard_,
 		bool& hasNextStormCard_,
 		std::vector<int>& stormDeck_,
-		bool& useExtendedSpiceBlow_,
-		std::vector<spiceCard>& spiceDeck_,
-		size_t& spiceDeckIndex_,
-		std::vector<spiceCard>& spiceDiscardPileA_,
-		std::vector<spiceCard>& spiceDiscardPileB_,
+		SpiceDeck& spiceDeck_,
 		TreacheryDeck& treacheryDeck_,
 		std::vector<int>& turnOrder_,
 		bool& beneGesseritCharity_,
@@ -82,9 +74,7 @@ struct PhaseContext {
 		  stormSector(stormSector_), lastStormCard(lastStormCard_),
 		  nextStormCard(nextStormCard_), hasNextStormCard(hasNextStormCard_),
 		  stormDeck(stormDeck_),
-		  useExtendedSpiceBlow(useExtendedSpiceBlow_),
-		  spiceDeck(spiceDeck_), spiceDeckIndex(spiceDeckIndex_),
-		  spiceDiscardPileA(spiceDiscardPileA_), spiceDiscardPileB(spiceDiscardPileB_),
+		  spiceDeck(spiceDeck_),
 		  treacheryDeck(treacheryDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),

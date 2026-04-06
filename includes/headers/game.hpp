@@ -10,6 +10,7 @@
 #include "map.hpp"
 #include "player.hpp"
 #include "cards/treachery_deck.hpp"
+#include "cards/spice_deck.hpp"
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
 
@@ -37,16 +38,7 @@ enum class faction {
 	SPACING_GUILD
 };
 
-enum class spiceCardType {
-	LOCATION,
-	WORM
-};
 
-struct spiceCard {
-	spiceCardType type;
-	std::string territoryName;
-	int spiceAmount;
-};
 
 class Game {
 	private:
@@ -64,17 +56,13 @@ class Game {
 		bool hasNextStormCard;
 		std::vector<int> stormDeck;
 
-		bool useExtendedSpiceBlow;
-		std::vector<spiceCard> spiceDeck;
-		size_t spiceDeckIndex;
-		std::vector<spiceCard> spiceDiscardPileA;
-		std::vector<spiceCard> spiceDiscardPileB;
-
-		bool beneGesseritCharity;
-
 		std::vector<int> playerTokenSectors;
 		GameMap _map;
 		std::mt19937 rng;
+
+		SpiceDeck spiceDeck;
+
+		bool beneGesseritCharity;
 
 		TreacheryDeck treacheryDeck;
 
@@ -86,9 +74,6 @@ class Game {
 		bool checkVictory();
 		void initializePhases();
 		void initializeStormDeck();
-		void initializeSpiceDeck();
-		spiceCard drawSpiceCard();
-		void discardSpiceCard(const spiceCard& card, int discardPileIndex);
 		void resolveWormOnTerritory(const std::string& territoryName);
 		void setTurnOrder();  // Recalculate turn order based on sector positions
 
