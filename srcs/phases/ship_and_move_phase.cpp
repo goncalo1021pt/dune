@@ -7,13 +7,17 @@
 #include <algorithm>
 #include <queue>
 #include <set>
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
 
 // ============================================================================
 // MAIN PHASE EXECUTION
 // ============================================================================
 
 void ShipAndMovePhase::execute(PhaseContext& ctx) {
-	std::cout << "  SHIP_AND_MOVE Phase" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("SHIP_AND_MOVE Phase");
+	}
 
 	// Get view for this phase
 	auto view = ctx.getShipAndMoveView();
@@ -22,7 +26,9 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	for (size_t i = 0; i < view.turnOrder.size(); ++i) {
 		int playerIndex = view.turnOrder[i];
 		Player* player = view.players[playerIndex];
-		std::cout << "\n    --- " << player->getFactionName() << "'s Turn ---" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("--- " + player->getFactionName() + "'s Turn ---");
+		}
 		
 		// 1. Shipment (deployment)
 		bool didShipment = executePlayerShipment(ctx, player);
@@ -31,7 +37,9 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 		bool didMovement = executePlayerMovement(ctx, player);
 		
 		if (!didShipment && !didMovement) {
-			std::cout << "    " << player->getFactionName() << " passes (no actions taken)" << std::endl;
+			if (ctx.logger) {
+				ctx.logger->logDebug(player->getFactionName() + " passes (no actions taken)");
+			}
 		}
 	}
 }
@@ -45,7 +53,9 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 
 	// Check if player has units to deploy
 	if (player->getUnitsReserve() <= 0) {
-		std::cout << "    Shipment: No units in reserve to deploy" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Shipment: No units in reserve to deploy");
+		}
 		return false;
 	}
 	
@@ -69,7 +79,9 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	}
 	
 	if (!decision.shouldDeploy) {
-		std::cout << "    Shipment: Skipped" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Shipment: Skipped");
+		}
 		return false;
 	}
 	
@@ -124,7 +136,9 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	
 	// Validation
 	if (!isValidDeployment(ctx, player->getFactionIndex(), territoryName, totalUnits)) {
-		std::cout << "    Deployment FAILED: Invalid deployment" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Deployment FAILED: Invalid deployment");
+		}
 		return false;
 	}
 	
@@ -136,15 +150,19 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	// Calculate and check cost
 	int cost = calculateDeploymentCost(terr, totalUnits);
 	if (player->getSpice() < cost) {
-		std::cout << "    Deployment FAILED: Insufficient spice (need " 
-		          << cost << ", have " << player->getSpice() << ")" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Deployment FAILED: Insufficient spice (need " 
+		          + std::to_string(cost) + ", have " + std::to_string(player->getSpice()) + ")");
+		}
 		return false;
 	}
 	
 	// Check if player has enough units in reserve
 	if (player->getUnitsReserve() < totalUnits) {
-		std::cout << "    Deployment FAILED: Insufficient units in reserve (need " 
-		          << totalUnits << ", have " << player->getUnitsReserve() << ")" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Deployment FAILED: Insufficient units in reserve (need " 
+		          + std::to_string(totalUnits) + ", have " + std::to_string(player->getUnitsReserve()) + ")");
+		}
 		return false;
 	}
 	
@@ -154,11 +172,22 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(), 
 	                            normalUnits, eliteUnits);
 	
-	std::cout << "    Shipment: Deployed " << totalUnits << " units to " 
-	          << territoryName << " for " << cost << " spice" << std::endl;
-	std::cout << "      (" << player->getFactionName() << " now has " 
-	          << player->getSpice() << " spice, " 
-	          << player->getUnitsReserve() << " units in reserve)" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("Shipment: Deployed " + std::to_string(totalUnits) + " units to " 
+		          + territoryName + " for " + std::to_string(cost) + " spice");
+		ctx.logger->logDebug("(" + player->getFactionName() + " now has " 
+		          + std::to_string(player->getSpice()) + " spice, " 
+		          + std::to_string(player->getUnitsReserve()) + " units in reserve)");
+		
+		Event e(EventType::UNITS_MOVED,
+			"Deployed " + std::to_string(totalUnits) + " units to " + territoryName,
+			ctx.turnNumber, "SHIP_AND_MOVE");
+		e.playerFaction = player->getFactionName();
+		e.territory = territoryName;
+		e.unitCount = totalUnits;
+		e.spiceValue = cost;
+		ctx.logger->logEvent(e);
+	}
 	
 	return true;
 }
@@ -199,12 +228,16 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	std::vector<std::string> territoriesWithUnits = view.map.getTerritoriesWithUnits(player->getFactionIndex());
 	
 	if (territoriesWithUnits.empty()) {
-		std::cout << "    Movement: No units on map to move" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement: No units on map to move");
+		}
 		return false;
 	}
 	
-	std::cout << "    Movement range: " << movementRange 
-	          << (movementRange == 3 ? " (special movement)" : "") << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("Movement range: " + std::to_string(movementRange) 
+		          + (movementRange == 3 ? " (special movement)" : ""));
+	}
 	
 	// Get movement decision (interactive or AI)
 	MovementDecision decision;
@@ -223,7 +256,9 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	}
 	
 	if (!decision.shouldMove) {
-		std::cout << "    Movement: Skipped" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement: Skipped");
+		}
 		return false;
 	}
 	
@@ -310,15 +345,19 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 	
 	// Validation
 	if (!isValidMovement(ctx, factionIndex, fromTerritory, toTerritory, movementRange)) {
-		std::cout << "    Movement FAILED: Invalid movement" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement FAILED: Invalid movement");
+		}
 		return false;
 	}
 	
 	// Check if player has enough units in source territory
 	int unitsInSource = view.map.getUnitsInTerritory(fromTerritory, factionIndex);
 	if (unitsInSource < totalUnits) {
-		std::cout << "    Movement FAILED: Not enough units in " << fromTerritory
-		          << " (need " << totalUnits << ", have " << unitsInSource << ")" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement FAILED: Not enough units in " + fromTerritory
+		          + " (need " + std::to_string(totalUnits) + ", have " + std::to_string(unitsInSource) + ")");
+		}
 		return false;
 	}
 	
@@ -326,8 +365,18 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 	view.map.removeUnitsFromTerritory(fromTerritory, factionIndex, normalUnits, eliteUnits);
 	view.map.addUnitsToTerritory(toTerritory, factionIndex, normalUnits, eliteUnits);
 	
-	std::cout << "    Movement: Moved " << totalUnits << " units from " 
-	          << fromTerritory << " to " << toTerritory << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("Movement: Moved " + std::to_string(totalUnits) + " units from " 
+		          + fromTerritory + " to " + toTerritory);
+		
+		Event e(EventType::UNITS_MOVED,
+			"Moved " + std::to_string(totalUnits) + " units from " + fromTerritory + " to " + toTerritory,
+			ctx.turnNumber, "SHIP_AND_MOVE");
+		e.playerFaction = view.players[factionIndex]->getFactionName();
+		e.territory = toTerritory;
+		e.unitCount = totalUnits;
+		ctx.logger->logEvent(e);
+	}
 	
 	return true;
 }

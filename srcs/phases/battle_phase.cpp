@@ -6,12 +6,16 @@
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
 
 BattlePhase::BattlePhase() {
 }
 
 void BattlePhase::execute(PhaseContext& ctx) {
-	std::cout << "  BATTLE Phase" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("BATTLE Phase");
+	}
 
 	// Get view for this phase
 	auto view = ctx.getBattleView();
@@ -57,11 +61,17 @@ void BattlePhase::execute(PhaseContext& ctx) {
 		while (!contestedTerritories.empty()) {
 			if (view.interactiveMode && contestedTerritories.size() > 1) {
 				// Ask player which battle to resolve first
-				std::cout << "\n    " << attacker->getFactionName() << "'s contested territories:" << std::endl;
-				for (size_t i = 0; i < contestedTerritories.size(); ++i) {
-					std::cout << "      " << (i + 1) << ". " << contestedTerritories[i] << std::endl;
+				if (ctx.logger) {
+					ctx.logger->logDebug(attacker->getFactionName() + "'s contested territories:");
 				}
-				std::cout << "    Choose which to battle (1-" << contestedTerritories.size() << "): ";
+				for (size_t i = 0; i < contestedTerritories.size(); ++i) {
+					if (ctx.logger) {
+						ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + contestedTerritories[i]);
+					}
+				}
+				if (ctx.logger) {
+					ctx.logger->logDebug("Choose which to battle (1-" + std::to_string(contestedTerritories.size()) + "): ");
+				}
 				
 				int choice = 0;
 				std::string input;
@@ -73,7 +83,9 @@ void BattlePhase::execute(PhaseContext& ctx) {
 							break;
 						}
 					} catch (...) {}
-					std::cout << "    Invalid choice. Try again: ";
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid choice. Try again: ");
+					}
 				}
 				choice--; // Convert to 0-indexed
 				
@@ -92,10 +104,12 @@ void BattlePhase::execute(PhaseContext& ctx) {
 		}
 	}
 
-	if (totalBattles == 0) {
-		std::cout << "    No battles occurred this turn." << std::endl;
-	} else {
-		std::cout << "\n    === " << totalBattles << " battle(s) resolved ===" << std::endl;
+	if (ctx.logger) {
+		if (totalBattles == 0) {
+			ctx.logger->logDebug("No battles occurred this turn.");
+		} else {
+			ctx.logger->logDebug("=== " + std::to_string(totalBattles) + " battle(s) resolved ===");
+		}
 	}
 }
 
@@ -116,18 +130,22 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 
 	if (defenderIndices.empty()) return; // No defenders
 
-	std::cout << "\n    === Battle in " << territoryName << " ===" << std::endl;
-	std::cout << "    " << attacker->getFactionName() << " (attacker) vs ";
-	for (size_t i = 0; i < defenderIndices.size(); ++i) {
-		std::cout << view.players[defenderIndices[i]]->getFactionName();
-		if (i < defenderIndices.size() - 1) std::cout << ", ";
+	if (ctx.logger) {
+		std::string defendersStr;
+		for (size_t i = 0; i < defenderIndices.size(); ++i) {
+			defendersStr += view.players[defenderIndices[i]]->getFactionName();
+			if (i < defenderIndices.size() - 1) defendersStr += ", ";
+		}
+		ctx.logger->logDebug("=== Battle in " + territoryName + " ===");
+		ctx.logger->logDebug(attacker->getFactionName() + " (attacker) vs " + defendersStr);
 	}
-	std::cout << std::endl;
 
 	// Get attacker's leaders
 	const auto& aliveLeaders = attacker->getAliveLeaders();
 	if (aliveLeaders.empty()) {
-		std::cout << "    " << attacker->getFactionName() << " has no alive leaders. Battle cannot occur." << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(attacker->getFactionName() + " has no alive leaders. Battle cannot occur.");
+		}
 		return;
 	}
 
@@ -144,8 +162,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 
 	// Calculate attacker's battle value
 	int attackerValue = wheelValue + attackerLeader.power;
-	std::cout << "    " << attacker->getFactionName() << " battle value: " << wheelValue 
-	          << " (wheel) + " << attackerLeader.power << " (leader) = " << attackerValue << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug(attacker->getFactionName() + " battle value: " + std::to_string(wheelValue) 
+		          + " (wheel) + " + std::to_string(attackerLeader.power) + " (leader) = " + std::to_string(attackerValue));
+	}
 
 	// For now, pick first defender (in multi-defender scenarios, could be more complex)
 	int defenderIdx = defenderIndices[0];
@@ -153,12 +173,23 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	const auto& defenderLeaders = defender->getAliveLeaders();
 
 	if (defenderLeaders.empty()) {
-		std::cout << "    " << defender->getFactionName() << " has no alive leaders. "
-		          << attacker->getFactionName() << " wins by default." << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(defender->getFactionName() + " has no alive leaders. "
+		          + attacker->getFactionName() + " wins by default.");
+		}
 		// Attacker loses wheelValue units, defender loses all units
 		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
 		int defenderAllUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
 		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defenderAllUnits, 0);
+		
+		if (ctx.logger) {
+			Event e(EventType::BATTLE_RESOLVED,
+				attacker->getFactionName() + " wins in " + territoryName,
+				ctx.turnNumber, "BATTLE");
+			e.playerFaction = attacker->getFactionName();
+			e.territory = territoryName;
+			ctx.logger->logEvent(e);
+		}
 		return;
 	}
 
@@ -175,29 +206,63 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	int defWheelValue = getBattleWheelChoice(ctx, defenderIdx, defenderUnits);
 
 	int defenderValue = defWheelValue + defenderLeader.power;
-	std::cout << "    " << defender->getFactionName() << " battle value: " << defWheelValue 
-	          << " (wheel) + " << defenderLeader.power << " (leader) = " << defenderValue << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug(defender->getFactionName() + " battle value: " + std::to_string(defWheelValue) 
+		          + " (wheel) + " + std::to_string(defenderLeader.power) + " (leader) = " + std::to_string(defenderValue));
+	}
 
 	// Determine winner (attacker wins ties)
-	std::cout << "    Result: ";
 	if (attackerValue > defenderValue) {
-		std::cout << attacker->getFactionName() << " wins!" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Result: " + attacker->getFactionName() + " wins!");
+		}
 		// Attacker loses wheelValue units, defender loses all units
 		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
 		int allDefenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
 		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, allDefenderUnits, 0);
+		
+		if (ctx.logger) {
+			Event e(EventType::BATTLE_RESOLVED,
+				attacker->getFactionName() + " defeats " + defender->getFactionName() + " in " + territoryName,
+				ctx.turnNumber, "BATTLE");
+			e.playerFaction = attacker->getFactionName();
+			e.territory = territoryName;
+			ctx.logger->logEvent(e);
+		}
 	} else if (attackerValue < defenderValue) {
-		std::cout << defender->getFactionName() << " wins!" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Result: " + defender->getFactionName() + " wins!");
+		}
 		// Defender wins: attacker loses all units, defender loses defWheelValue
 		int allAttackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
 		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, allAttackerUnits, 0);
 		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defWheelValue, 0);
+		
+		if (ctx.logger) {
+			Event e(EventType::BATTLE_RESOLVED,
+				defender->getFactionName() + " defeats " + attacker->getFactionName() + " in " + territoryName,
+				ctx.turnNumber, "BATTLE");
+			e.playerFaction = defender->getFactionName();
+			e.territory = territoryName;
+			ctx.logger->logEvent(e);
+		}
 	} else {
-		std::cout << "Tie! " << attacker->getFactionName() << " wins (attacker advantage)." << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Result: Tie! " + attacker->getFactionName() + " wins (attacker advantage).");
+		}
 		// Attacker loses wheelValue, defender loses all units
 		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
 		int allDefenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
 		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, allDefenderUnits, 0);
+		
+		if (ctx.logger) {
+			Event e(EventType::BATTLE_RESOLVED,
+				"Tie in " + territoryName + ": " + attacker->getFactionName() + " wins",
+				ctx.turnNumber, "BATTLE");
+			e.playerFaction = attacker->getFactionName();
+			e.territory = territoryName;
+			ctx.logger->logEvent(e);
+		}
 	}
 }
 
@@ -206,7 +271,9 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 	Player* player = view.players[playerIndex];
 	
 	if (view.interactiveMode) {
-		std::cout << "    " << player->getFactionName() << ", enter battle wheel value (0-" << maxUnits << "): ";
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + ", enter battle wheel value (0-" + std::to_string(maxUnits) + "): ");
+		}
 		
 		int choice = -1;
 		while (choice < 0 || choice > maxUnits) {
@@ -215,11 +282,15 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 			try {
 				choice = std::stoi(input);
 				if (choice < 0 || choice > maxUnits) {
-					std::cout << "    Invalid. Must be 0-" << maxUnits << ": ";
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid. Must be 0-" + std::to_string(maxUnits) + ": ");
+					}
 					choice = -1;
 				}
 			} catch (...) {
-				std::cout << "    Invalid input. Try again: ";
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid input. Try again: ");
+				}
 				choice = -1;
 			}
 		}
@@ -227,7 +298,9 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 	} else {
 		// AI: random choice 0 to maxUnits
 		int choice = rand() % (maxUnits + 1);
-		std::cout << "    " << player->getFactionName() << " wheel value: " << choice << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + " wheel value: " + std::to_string(choice));
+		}
 		return choice;
 	}
 }
@@ -238,12 +311,18 @@ int BattlePhase::selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int a
 	
 	if (view.interactiveMode && aliveLeaderCount > 1) {
 		const auto& leaders = player->getAliveLeaders();
-		std::cout << "    " << player->getFactionName() << ", select leader for battle:" << std::endl;
-		for (int i = 0; i < (int)leaders.size(); ++i) {
-			std::cout << "      " << (i + 1) << ". " << leaders[i].name 
-			          << " (power:" << leaders[i].power << ")" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + ", select leader for battle:");
 		}
-		std::cout << "    Choose (1-" << aliveLeaderCount << "): ";
+		for (int i = 0; i < (int)leaders.size(); ++i) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + leaders[i].name 
+			          + " (power:" + std::to_string(leaders[i].power) + ")");
+			}
+		}
+		if (ctx.logger) {
+			ctx.logger->logDebug("Choose (1-" + std::to_string(aliveLeaderCount) + "): ");
+		}
 		
 		int choice = -1;
 		while (choice < 1 || choice > aliveLeaderCount) {
@@ -252,11 +331,15 @@ int BattlePhase::selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int a
 			try {
 				choice = std::stoi(input);
 				if (choice < 1 || choice > aliveLeaderCount) {
-					std::cout << "    Invalid. Try again: ";
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid. Try again: ");
+					}
 					choice = -1;
 				}
 			} catch (...) {
-				std::cout << "    Invalid input. Try again: ";
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid input. Try again: ");
+				}
 				choice = -1;
 			}
 		}
@@ -272,7 +355,9 @@ int BattlePhase::selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int a
 				bestIdx = i;
 			}
 		}
-		std::cout << "    " << player->getFactionName() << " selects: " << leaders[bestIdx].name << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + " selects: " + leaders[bestIdx].name);
+		}
 		return bestIdx;
 	}
 }

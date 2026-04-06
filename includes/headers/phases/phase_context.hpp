@@ -9,6 +9,7 @@ class Player;
 class GameMap;
 class TreacheryDeck;
 class SpiceDeck;
+class EventLogger;
 enum class gamePhase : int;
 
 /**
@@ -49,6 +50,9 @@ struct PhaseContext {
 
 	// Testing/Debug
 	bool interactiveMode;
+	
+	// Event logging
+	EventLogger* logger;
 
 	struct StormView {
 		int turnNumber;
@@ -185,7 +189,8 @@ struct PhaseContext {
 		std::vector<int>& turnOrder_,
 		bool& beneGesseritCharity_,
 		std::mt19937& rng_,
-		bool interactiveMode_ = false
+		bool interactiveMode_ = false,
+		EventLogger* logger_ = nullptr
 	)
 		: turnNumber(turnNumber_), currentPhase(currentPhase_),
 		  players(players_), playerCount(playerCount_), map(map_),
@@ -196,5 +201,5 @@ struct PhaseContext {
 		  treacheryDeck(treacheryDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
-		  interactiveMode(interactiveMode_) {}
+		  interactiveMode(interactiveMode_), logger(logger_) {}
 };

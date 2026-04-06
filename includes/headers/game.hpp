@@ -14,6 +14,9 @@
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
 
+// Forward declarations
+class EventLogger;
+
 enum class gamePhase : int {
 	STORM,
     SPICE_BLOW,
@@ -95,6 +98,9 @@ class Game {
 		std::vector<std::unique_ptr<Phase>> phases;
 
 		bool interactiveMode;
+		
+		// Event logging
+		std::unique_ptr<EventLogger> eventLogger;
 
 		bool checkVictory();
 		void initializePhases();

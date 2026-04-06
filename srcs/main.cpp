@@ -2,21 +2,26 @@
 
 extern void set_signal();
 
-int main()
-{
-	std::cout << " === Dune Board Game Engine ===" << std::endl;
-	std::cout << "Original Dune Board Game Simulator\n" << std::endl;
-	
-	// Set up signal handlers
+void parsing(int argc, char* argv[], bool& debugMode) {
+	for (int i = 1; i < argc; ++i) {
+		if (std::string(argv[i]) == "-d") {
+			debugMode = true;
+			std::cout << "[DEBUG MODE] Interactive terminal input enabled" << std::endl;
+			break;
+		}
+	}
+}
+
+int main(int argc, char* argv[])
+{	
+	bool debugMode = false;
+	parsing(argc, argv, debugMode);
 	set_signal();
 	
-	// Create a game with 3 players, seeded with 42, with interactive mode enabled
-	Game dune_game(3, 42, true);
+	Game dune_game(3, 42, debugMode);
 	
-	// Register game instance for debug output
 	GameDebugger::setGameInstance(&dune_game);
 	
-	// Run the game
 	dune_game.runGame();
 	
 	return 0;

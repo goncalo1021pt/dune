@@ -1,5 +1,6 @@
 #include "game.hpp"
 #include "leader.hpp"
+#include "logger/console_event_logger.hpp"
 #include "phases/phase_context.hpp"
 #include "phases/storm_phase.hpp"
 #include "phases/spice_blow_phase.hpp"
@@ -32,7 +33,8 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
-	  treacheryDeck(rng), phases(), interactiveMode(interactive) {
+	  treacheryDeck(rng), phases(), interactiveMode(interactive),
+	  eventLogger(std::make_unique<ConsoleEventLogger>()) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -86,17 +88,26 @@ bool Game::isInteractiveMode() const {
 }
 
 void Game::initializeGame() {
-	std::cout << "\n=== Initializing Dune Game ===" << std::endl;
-	std::cout << "Number of players: " << playerCount << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug("=== Initializing Dune Game ===");
+		eventLogger->logDebug("Number of players: " + std::to_string(playerCount));
+	}
 	
 	_map.initializeMap();
-	std::cout << "Map initialized with " << _map.getTerritories().size() << " territories" << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug("Map initialized with " + std::to_string(_map.getTerritories().size()) + " territories");
+	}
 	spiceDeck.initialize(_map);
 	treacheryDeck.initialize();
+	if (eventLogger) {
+		eventLogger->logDebug("Treachery deck initialized with " + std::to_string(treacheryDeck.getTotalCards()) + " cards");
+	}
 	
 	stormSector = 0;
 	initializeStormDeck();
-	std::cout << "\nStorm will be placed randomly during Turn 1 STORM phase" << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug("Storm will be placed randomly during Turn 1 STORM phase");
+	}
 	
 	std::uniform_int_distribution<> offsetDist(0, NUM_TOKEN_SECTORS - 1);
 	int randomOffset = offsetDist(rng);
@@ -107,34 +118,42 @@ void Game::initializeGame() {
 		int index = (randomOffset + i * spacing) % NUM_TOKEN_SECTORS;
 		playerTokenSectors.push_back(TOKEN_SECTORS[index]);
 	}
-	std::cout << "Player tokens placed at sectors:";
+	std::string sectorInfo = "Player tokens placed at sectors:";
 	for (int i = 0; i < playerCount; ++i) {
-		std::cout << " P" << (i + 1) << "-" << playerTokenSectors[i];
+		sectorInfo += " P" + std::to_string(i + 1) + "-" + std::to_string(playerTokenSectors[i]);
 	}
-	std::cout << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug(sectorInfo);
+	}
 	
 	// Initialize turn order (will be recalculated after each storm phase)
 	setTurnOrder();
 	
-	std::cout << "\nPlayers initialized:" << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug("=== Players Initialized ===");
+	}
 	for (int i = 0; i < playerCount; ++i) {
-		std::cout << "  " << players[i]->getFactionName() << ": " 
-		          << players[i]->getSpice() << " spice, " 
-		          << players[i]->getUnitsReserve() << " units in reserve" << std::endl;
+		if (eventLogger) {
+			eventLogger->logDebug(players[i]->getFactionName() + ": " + 
+				std::to_string(players[i]->getSpice()) + " spice, " +
+				std::to_string(players[i]->getUnitsReserve()) + " units in reserve");
+		}
 		
-		// Print leader info
+		// Log leader info
 		const auto& aliveLeaders = players[i]->getAliveLeaders();
-		if (!aliveLeaders.empty()) {
-			std::cout << "    Leaders: ";
+		if (!aliveLeaders.empty() && eventLogger) {
+			std::string leaders = "  Leaders: ";
 			for (size_t j = 0; j < aliveLeaders.size(); j++) {
-				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
-				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+				leaders += aliveLeaders[j].name + " (power:" + std::to_string(aliveLeaders[j].power) + ")";
+				if (j < aliveLeaders.size() - 1) leaders += ", ";
 			}
-			std::cout << std::endl;
+			eventLogger->logDebug(leaders);
 		}
 	}
 	
-	std::cout << "=== Game Initialized ===" << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug("=== Game Initialized ===");
+	}
 }
 
 void Game::initializePhases() {
@@ -197,23 +216,27 @@ void Game::setTurnOrder() {
 		turnOrder.push_back(pair.first);
 	}
 	
-	// Print the calculated turn order
-	std::cout << "\nTurn Order (Counter-clockwise from Storm at Sector " << stormSector << "):" << std::endl;
-	for (size_t i = 0; i < turnOrder.size(); ++i) {
-		int playerIdx = turnOrder[i];
-		int tokenSector = playerTokenSectors[playerIdx];
-		int distance = (tokenSector - stormSector + TOTAL_SECTORS) % TOTAL_SECTORS;
-		std::cout << "  " << (i + 1) << ". " << players[playerIdx]->getFactionName() 
-				  << " (Sector " << tokenSector << ", distance " << distance << ")" << std::endl;
+	// Log the calculated turn order
+	if (eventLogger) {
+		std::string turnOrderStr = "Turn Order (from Storm at Sector " + std::to_string(stormSector) + "): ";
+		for (size_t i = 0; i < turnOrder.size(); ++i) {
+			turnOrderStr += players[turnOrder[i]]->getFactionName();
+			if (i < turnOrder.size() - 1) turnOrderStr += " -> ";
+		}
+		eventLogger->logDebug(turnOrderStr);
 	}
-	std::cout << std::endl;
 }
 
 bool Game::checkVictory() {
 	for (int i = 0; i < playerCount; ++i) {
 		if (_map.countControlledTerritories(i) >= 3) {
-			std::cout << "\n*** VICTORY! " << players[i]->getFactionName() 
-			          << " controls 3 territories! ***\n" << std::endl;
+			if (eventLogger) {
+				Event e(EventType::GAME_ENDED,
+					"VICTORY! " + players[i]->getFactionName() + " controls 3 territories!",
+					turnNumber, "");
+				e.playerFaction = players[i]->getFactionName();
+				eventLogger->logEvent(e);
+			}
 			return true;
 		}
 	}
@@ -225,13 +248,14 @@ void Game::processPhase() {
 		turnNumber, currentPhase, players, playerCount, _map,
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, spiceDeck,
-		treacheryDeck, turnOrder, beneGesseritCharity, rng, interactiveMode
+		treacheryDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
+		eventLogger.get()
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {
 		phases[static_cast<int>(currentPhase)]->execute(ctx);
-	} else {
-		std::cout << "  " << getPhaseName(currentPhase) << " Phase (TODO)" << std::endl;
+	} else if (eventLogger) {
+		eventLogger->logDebug(getPhaseName(currentPhase) + " Phase (TODO)");
 	}
 	
 	// Update turn order after storm phase
@@ -242,24 +266,28 @@ void Game::processPhase() {
 
 void Game::processTurn() {
 	turnNumber++;
-	std::cout << "\n--- Turn " << turnNumber << " ---" << std::endl;
+	if (eventLogger) {
+		eventLogger->logDebug("--- Turn " + std::to_string(turnNumber) + " ---");
+	}
 	
 	// Reset leader battle status at start of turn
 	for (int i = 0; i < playerCount; ++i) {
 		players[i]->resetLeaderBattleStatus();
 	}
 	
-	// Print faction leaders
-	std::cout << "Leaders at start of turn: " << std::endl;
-	for (int i = 0; i < playerCount; ++i) {
-		const auto& aliveLeaders = players[i]->getAliveLeaders();
-		if (!aliveLeaders.empty()) {
-			std::cout << "  " << players[i]->getFactionName() << ": ";
-			for (size_t j = 0; j < aliveLeaders.size(); j++) {
-				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
-				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+	// Log faction leaders at start of turn
+	if (eventLogger) {
+		eventLogger->logDebug("Leaders at start of turn:");
+		for (int i = 0; i < playerCount; ++i) {
+			const auto& aliveLeaders = players[i]->getAliveLeaders();
+			if (!aliveLeaders.empty()) {
+				std::string leaderStr = players[i]->getFactionName() + ": ";
+				for (size_t j = 0; j < aliveLeaders.size(); j++) {
+					leaderStr += aliveLeaders[j].name + " (power:" + std::to_string(aliveLeaders[j].power) + ")";
+					if (j < aliveLeaders.size() - 1) leaderStr += ", ";
+				}
+				eventLogger->logDebug(leaderStr);
 			}
-			std::cout << "\n";
 		}
 	}
 	
@@ -280,11 +308,15 @@ void Game::runGame() {
 			break;
 		}
 		
-		std::cout << std::endl;
+		if (eventLogger) {
+			eventLogger->logDebug("");
+		}
 	}
 	
 	if (turnNumber >= MAX_TURNS) {
-		std::cout << "\n=== GAME ENDED: Max turns reached ===" << std::endl;
+		if (eventLogger) {
+			eventLogger->logDebug("=== GAME ENDED: Max turns reached ===");
+		}
 	}
 }
 

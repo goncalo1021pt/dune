@@ -7,5 +7,5 @@ public:
 	void execute(PhaseContext& ctx) override;
 
 private:
-	void resolveWormOnTerritory(const std::string& territoryName, GameMap& map);
+	void resolveWormOnTerritory(const std::string& territoryName, GameMap& map, PhaseContext* ctxPtr);
 };

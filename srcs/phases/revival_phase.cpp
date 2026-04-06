@@ -1,10 +1,13 @@
 #include "phases/revival_phase.hpp"
 #include "player.hpp"
-#include <iostream>
 #include <algorithm>
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
 
 void RevivalPhase::execute(PhaseContext& ctx) {
-	std::cout << "  REVIVAL Phase" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("REVIVAL Phase");
+	}
 	auto view = ctx.getRevivalView();
 	const int maxRevivesPerTurn = 3;
 	const int spiceCostPerPaidRevive = 2;
@@ -34,11 +37,20 @@ void RevivalPhase::execute(PhaseContext& ctx) {
 		}
 		view.players[i]->reviveUnits(totalRevived);
 
-		std::cout << "    " << view.players[i]->getFactionName() << " revives "
-		          << totalRevived << " units (" << revivedForFree << " free";
-		if (revivedPaid > 0) {
-			std::cout << ", " << revivedPaid << " paid for " << spicePaid << " spice";
+		if (ctx.logger) {
+			std::string msg = "revives " + std::to_string(totalRevived) + " units (" + std::to_string(revivedForFree) + " free";
+			if (revivedPaid > 0) {
+				msg += ", " + std::to_string(revivedPaid) + " paid for " + std::to_string(spicePaid) + " spice";
+			}
+			msg += ")";
+			
+			Event e(EventType::LEADER_REVIVED,
+				msg,
+				ctx.turnNumber, "REVIVAL");
+			e.playerFaction = view.players[i]->getFactionName();
+			e.unitCount = totalRevived;
+			e.spiceValue = spicePaid;
+			ctx.logger->logEvent(e);
 		}
-		std::cout << ")" << std::endl;
 	}
 }
