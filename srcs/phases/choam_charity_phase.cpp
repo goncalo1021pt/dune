@@ -1,9 +1,12 @@
 #include "phases/choam_charity_phase.hpp"
 #include "player.hpp"
-#include <iostream>
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
 
 void ChoamCharityPhase::execute(PhaseContext& ctx) {
-	std::cout << "  CHOAM_CHARITY Phase" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("CHOAM_CHARITY Phase");
+	}
 	auto view = ctx.getChoamCharityView();
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		int currentSpice = view.players[i]->getSpice();
@@ -17,9 +20,15 @@ void ChoamCharityPhase::execute(PhaseContext& ctx) {
 		if (shouldReceiveCharity && currentSpice < 2) {
 			int charityAmount = 2 - currentSpice;
 			view.players[i]->addSpice(charityAmount);
-			std::cout << "    " << view.players[i]->getFactionName() << " receives "
-			          << charityAmount << " spice from CHOAM (now at "
-			          << view.players[i]->getSpice() << ")" << std::endl;
+			
+			if (ctx.logger) {
+				Event e(EventType::SPICE_CHARITY, 
+					std::string("receives ") + std::to_string(charityAmount) + " spice from CHOAM",
+					ctx.turnNumber, "CHOAM_CHARITY");
+				e.playerFaction = view.players[i]->getFactionName();
+				e.spiceValue = charityAmount;
+				ctx.logger->logEvent(e);
+			}
 		}
 	}
 }

@@ -53,14 +53,11 @@ void TreacheryDeck::initialize() {
 
 	// Shuffle the deck
 	std::shuffle(deck.begin(), deck.end(), rng);
-
-	std::cout << "    Treachery deck initialized with " << deck.size() << " cards" << std::endl;
 }
 
 void TreacheryDeck::reshuffle() {
 	std::shuffle(deck.begin(), deck.end(), rng);
 	deckIndex = 0;
-	std::cout << "    Treachery deck reshuffled" << std::endl;
 }
 
 treacheryCard TreacheryDeck::drawCard() {

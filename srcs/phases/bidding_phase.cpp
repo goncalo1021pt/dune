@@ -2,53 +2,71 @@
 #include <phases/phase_context.hpp>
 #include <cards/treachery_deck.hpp>
 #include <player.hpp>
-#include <iostream>
 #include <set>
 #include <random>
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
+#include <iostream>
 
 void BiddingPhase::execute(PhaseContext& ctx) {
-	std::cout << "  BIDDING Phase" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("BIDDING Phase");
+	}
 
 	// Get view for this phase
 	auto view = ctx.getBiddingView();
 
 	// Step 1: Declare hand counts (for transparency)
-	std::cout << "\n    === Declaration ===" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("=== Declaration ===");
+	}
 	std::vector<int> eligiblePlayers; // Players who can bid (< 4 cards)
 	
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		int handCount = view.players[i]->getTreacheryCards().size();
-		std::cout << "    " << view.players[i]->getFactionName() << ": " << handCount << " cards";
+		std::string playerStatus = view.players[i]->getFactionName() + ": " + std::to_string(handCount) + " cards";
 		
 		if (handCount >= 4) {
-			std::cout << " (MUST PASS)" << std::endl;
+			playerStatus += " (MUST PASS)";
 		} else {
-			std::cout << std::endl;
 			eligiblePlayers.push_back(i);
+		}
+		if (ctx.logger) {
+			ctx.logger->logDebug(playerStatus);
 		}
 	}
 
 	// Step 2: If no eligible players, bidding phase ends
 	if (eligiblePlayers.empty()) {
-		std::cout << "\n    No players eligible to bid (all at 4 card limit)" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("No players eligible to bid (all at 4 card limit)");
+		}
 		return;
 	}
 
 	// Step 3: Dealer deals cards (one for each eligible player)
-	std::cout << "\n    === Dealing Cards ===" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("=== Dealing Cards ===");
+	}
 	std::vector<treacheryCard> auctionCards;
 	for (size_t i = 0; i < eligiblePlayers.size(); ++i) {
 		treacheryCard card = view.treacheryDeck.drawCard();
 		auctionCards.push_back(card);
-		std::cout << "    Card " << (i + 1) << " dealt (face down)" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Card " + std::to_string(i + 1) + " dealt (face down)");
+		}
 	}
 
 	// Step 4: Auction each card
-	std::cout << "\n    === Auction ===" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("=== Auction ===");
+	}
 	int startingBidderIndex = 0; // Index in eligiblePlayers, will rotate
 
 	for (size_t cardIdx = 0; cardIdx < auctionCards.size(); ++cardIdx) {
-		std::cout << "\n    Card " << (cardIdx + 1) << ": " << auctionCards[cardIdx].name << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug("Card " + std::to_string(cardIdx + 1) + ": " + auctionCards[cardIdx].name);
+		}
 
 		// Find next eligible player to start bidding
 		int startingPlayerIdx = (startingBidderIndex) % eligiblePlayers.size();
@@ -59,15 +77,22 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 
 		if (winner == -1) {
 			// Everyone passed on this card - return all remaining cards to deck and END bidding
-			std::cout << "\n    No one bid on this card. Returning remaining cards to deck." << std::endl;
-			std::cout << "    === Bidding Phase Ended ===" << std::endl;
+			if (ctx.logger) {
+				ctx.logger->logDebug("No one bid on this card. Returning remaining cards to deck.");
+				ctx.logger->logDebug("=== Bidding Phase Ended ===");
+			}
 			return;
 		}
 
 		// Award card to winner
 		view.players[winner]->addTreacheryCard(auctionCards[cardIdx].name);
-		std::cout << "    " << view.players[winner]->getFactionName() << " wins \"" 
-		          << auctionCards[cardIdx].name << "\"" << std::endl;
+		if (ctx.logger) {
+			Event e(EventType::BID_PLACED,
+				view.players[winner]->getFactionName() + " wins \"" + auctionCards[cardIdx].name + "\"",
+				ctx.turnNumber, "BIDDING");
+			e.playerFaction = view.players[winner]->getFactionName();
+			ctx.logger->logEvent(e);
+		}
 
 		// Rotate starting bidder for next card
 		for (size_t i = 0; i < eligiblePlayers.size(); ++i) {
@@ -78,7 +103,9 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 		}
 	}
 
-	std::cout << "\n    === All cards auctioned ===" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug("=== All cards auctioned ===");
+	}
 }
 
 int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex, 
@@ -125,23 +152,28 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 
 		// If this was the first round and everyone passed without anyone raising, end bidding
 		if (playersOfferedThisRound >= totalEligible && !anyoneRaised) {
-			std::cout << "      Everyone passed on this card." << std::endl;
+			if (ctx.logger) {
+				ctx.logger->logDebug("Everyone passed on this card.");
+			}
 			return -1;
 		}
 
 		// If only 1 player remains and someone has raised, they win
 		if (activeBidders.size() == 1 && anyoneRaised) {
 			highestBidder = *activeBidders.begin();
-			std::cout << "      Winner: " << view.players[highestBidder]->getFactionName() 
-			          << " (bid: " << currentBid << " spice)";
 			
-			if (currentBid > 0) {
-				int spaceBefore = view.players[highestBidder]->getSpice();
-				view.players[highestBidder]->removeSpice(currentBid);
-				int spaceAfter = view.players[highestBidder]->getSpice();
-				std::cout << " - pays " << currentBid << " spice (" << spaceBefore << " -> " << spaceAfter << ")";
+			if (ctx.logger) {
+				std::string winMsg = "Winner: " + view.players[highestBidder]->getFactionName() + 
+					" (bid: " + std::to_string(currentBid) + " spice)";
+				if (currentBid > 0) {
+					int spaceBefore = view.players[highestBidder]->getSpice();
+					view.players[highestBidder]->removeSpice(currentBid);
+					int spaceAfter = view.players[highestBidder]->getSpice();
+					winMsg += " - pays " + std::to_string(currentBid) + " spice (" + 
+						std::to_string(spaceBefore) + " -> " + std::to_string(spaceAfter) + ")";
+				}
+				ctx.logger->logDebug(winMsg);
 			}
-			std::cout << std::endl;
 			
 			return highestBidder;
 		}
@@ -172,9 +204,12 @@ bool BiddingPhase::askPlayerToBid(PhaseContext& ctx, int playerIndex, int curren
 
 	if (view.interactiveMode) {
 		// Interactive mode: prompt player for input
-		std::cout << "      " << player->getFactionName() << "'s turn to bid (current bid: " << currentBid << " spice)" << std::endl;
-		std::cout << "      Your spice: " << player->getSpice() << std::endl;
-		std::cout << "      Enter bid amount (0 to pass): ";
+		std::string prompt = player->getFactionName() + "'s turn to bid (current bid: " + 
+			std::to_string(currentBid) + " spice). Your spice: " + std::to_string(player->getSpice());
+		if (ctx.logger) {
+			ctx.logger->logDebug(prompt);
+			ctx.logger->logDebug("Enter bid amount (0 to pass): ");
+		}
 		
 		int bid = -1;
 		while (bid < 0) {
@@ -183,30 +218,41 @@ bool BiddingPhase::askPlayerToBid(PhaseContext& ctx, int playerIndex, int curren
 			if (std::cin.fail()) {
 				std::cin.clear();
 				std::cin.ignore(10000, '\n');
-				std::cout << "      Invalid input. Enter a number or 0 to pass: ";
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid input. Enter a number or 0 to pass: ");
+				}
 				bid = -1;
 				continue;
 			}
 			
 			if (bid == 0) {
-				std::cout << "      " << player->getFactionName() << " passes." << std::endl;
+				if (ctx.logger) {
+					ctx.logger->logDebug(player->getFactionName() + " passes.");
+				}
 				return false; // Pass
 			}
 			
 			if (bid <= currentBid) {
-				std::cout << "      Bid must be higher than current bid (" << currentBid << "). Try again: ";
+				if (ctx.logger) {
+					ctx.logger->logDebug("Bid must be higher than current bid (" + std::to_string(currentBid) + "). Try again: ");
+				}
 				bid = -1;
 				continue;
 			}
 			
 			if (bid > player->getSpice()) {
-				std::cout << "      Bid (" << bid << ") exceeds your spice (" << player->getSpice() << "). Try again: ";
+				if (ctx.logger) {
+					ctx.logger->logDebug("Bid (" + std::to_string(bid) + ") exceeds your spice (" + 
+						std::to_string(player->getSpice()) + "). Try again: ");
+				}
 				bid = -1;
 				continue;
 			}
 		}
 		
-		std::cout << "      " << player->getFactionName() << " bids " << bid << " spice." << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + " bids " + std::to_string(bid) + " spice.");
+		}
 		newBid = bid;
 		return true; // Raise
 	} else {
@@ -221,7 +267,9 @@ bool BiddingPhase::aiDecideToBid(PhaseContext& ctx, int playerIndex, int current
 
 	// If player doesn't have spice to bid higher, must pass
 	if (player->getSpice() <= currentBid) {
-		std::cout << "      " << player->getFactionName() << " passes (insufficient spice)" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + " passes (insufficient spice)");
+		}
 		return false;
 	}
 
@@ -230,7 +278,9 @@ bool BiddingPhase::aiDecideToBid(PhaseContext& ctx, int playerIndex, int current
 	int roll = dist(view.rng);
 
 	if (roll <= 40) {
-		std::cout << "      " << player->getFactionName() << " passes" << std::endl;
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + " passes");
+		}
 		return false; // Pass
 	}
 
@@ -244,7 +294,9 @@ bool BiddingPhase::aiDecideToBid(PhaseContext& ctx, int playerIndex, int current
 		bid = player->getSpice();
 	}
 	
-	std::cout << "      " << player->getFactionName() << " bids " << bid << " spice" << std::endl;
+	if (ctx.logger) {
+		ctx.logger->logDebug(player->getFactionName() + " bids " + std::to_string(bid) + " spice");
+	}
 	newBid = bid;
 	return true; // Raise
 }
