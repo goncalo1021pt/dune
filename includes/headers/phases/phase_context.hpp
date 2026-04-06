@@ -54,6 +54,9 @@ struct PhaseContext {
 	// Event logging
 	EventLogger* logger;
 
+	// Game state
+	bool gameEnded;
+
 	struct StormView {
 		int turnNumber;
 		int& stormSector;
@@ -136,6 +139,15 @@ struct PhaseContext {
 		std::vector<Player*>& players;
 	};
 
+	/**
+	 * MentatPauseView: MENTAT_PAUSE Phase (end-of-turn review, victory check)
+	 */
+	struct MentatPauseView {
+		GameMap& map;
+		std::vector<Player*>& players;
+		int turnNumber;
+	};
+
 	// Getter methods for phase views
 	StormView getStormView() {
 		return StormView {
@@ -172,6 +184,10 @@ struct PhaseContext {
 		return SpiceCollectionView { map, players };
 	}
 
+	MentatPauseView getMentatPauseView() {
+		return MentatPauseView { map, players, turnNumber };
+	}
+
 	// Constructor: bind all references
 	PhaseContext(
 		int& turnNumber_,
@@ -201,5 +217,5 @@ struct PhaseContext {
 		  treacheryDeck(treacheryDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
-		  interactiveMode(interactiveMode_), logger(logger_) {}
+		  interactiveMode(interactiveMode_), logger(logger_), gameEnded(false) {}
 };
