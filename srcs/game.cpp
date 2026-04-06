@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "leader.hpp"
 #include "phases/phase_context.hpp"
 #include "phases/storm_phase.hpp"
 #include "phases/spice_blow_phase.hpp"
@@ -7,6 +8,7 @@
 #include "phases/choam_charity_phase.hpp"
 #include "phases/revival_phase.hpp"
 #include "phases/bidding_phase.hpp"
+#include "phases/battle_phase.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -49,6 +51,10 @@ Game::Game(int numPlayers, unsigned int seed)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
+		// Assign all 5 default leaders (power 1-5) to each faction
+		for (int power = 1; power <= 5; ++power) {
+			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
+		}
 	}
 
 	initializePhases();
@@ -69,6 +75,10 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
+		// Assign all 5 default leaders (power 1-5) to each faction
+		for (int power = 1; power <= 5; ++power) {
+			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
+		}
 	}
 
 	initializePhases();
@@ -118,10 +128,6 @@ void Game::initializeGame() {
 	initializeSpiceDeck();
 	treacheryDeck.initialize();
 	
-	for (int i = 0; i < playerCount; ++i) {
-		turnOrder.push_back(FACTION_NAMES[i]);
-	}
-	
 	stormSector = 0;
 	initializeStormDeck();
 	std::cout << "\nStorm will be placed randomly during Turn 1 STORM phase" << std::endl;
@@ -142,11 +148,25 @@ void Game::initializeGame() {
 	}
 	std::cout << std::endl;
 	
+	// Initialize turn order (will be recalculated after each storm phase)
+	setTurnOrder();
+	
 	std::cout << "\nPlayers initialized:" << std::endl;
 	for (int i = 0; i < playerCount; ++i) {
 		std::cout << "  " << players[i]->getFactionName() << ": " 
 		          << players[i]->getSpice() << " spice, " 
 		          << players[i]->getUnitsReserve() << " units in reserve" << std::endl;
+		
+		// Print leader info
+		const auto& aliveLeaders = players[i]->getAliveLeaders();
+		if (!aliveLeaders.empty()) {
+			std::cout << "    Leaders: ";
+			for (size_t j = 0; j < aliveLeaders.size(); j++) {
+				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
+				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << std::endl;
+		}
 	}
 	
 	std::cout << "=== Game Initialized ===" << std::endl;
@@ -161,7 +181,7 @@ void Game::initializePhases() {
 	phases[static_cast<int>(gamePhase::BIDDING)]        = std::make_unique<BiddingPhase>();
 	phases[static_cast<int>(gamePhase::REVIVAL)]        = std::make_unique<RevivalPhase>();
 	phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)]  = std::make_unique<ShipAndMovePhase>();
-	// phases[static_cast<int>(gamePhase::BATTLE)]      = BATTLE (TODO)
+	phases[static_cast<int>(gamePhase::BATTLE)]         = std::make_unique<BattlePhase>();
 	phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = std::make_unique<SpiceCollectionPhase>();
 	// phases[static_cast<int>(gamePhase::MENTAT_PAUSE)] = MENTAT_PAUSE (TODO)
 }
@@ -269,6 +289,48 @@ const std::vector<territory>& Game::getTerritories() const {
 	return _map.getTerritories();
 }
 
+const std::vector<int>& Game::getTurnOrder() const {
+	return turnOrder;
+}
+
+void Game::setTurnOrder() {
+	// Clear and recalculate turn order based on sector positions
+	// Counter-clockwise from storm sector (sector numbers increasing)
+	// First player is in the sector right after the storm
+	
+	turnOrder.clear();
+	
+	// Create list of (player index, next sector counter-clockwise from storm)
+	std::vector<std::pair<int, int>> playersWithSectors;
+	
+	for (int i = 0; i < playerCount; ++i) {
+		int tokenSector = playerTokenSectors[i];
+		// Distance counter-clockwise from storm to this player's token
+		int distance = (tokenSector - stormSector + 18) % 18;
+		playersWithSectors.push_back({i, distance});
+	}
+	
+	// Sort by distance (smallest distance = closest counter-clockwise = first in turn order)
+	std::sort(playersWithSectors.begin(), playersWithSectors.end(),
+		[](const auto& a, const auto& b) { return a.second < b.second; });
+	
+	// Build turn order from sorted list
+	for (const auto& pair : playersWithSectors) {
+		turnOrder.push_back(pair.first);
+	}
+	
+	// Print the calculated turn order
+	std::cout << "\nTurn Order (Counter-clockwise from Storm at Sector " << stormSector << "):" << std::endl;
+	for (size_t i = 0; i < turnOrder.size(); ++i) {
+		int playerIdx = turnOrder[i];
+		int tokenSector = playerTokenSectors[playerIdx];
+		int distance = (tokenSector - stormSector + 18) % 18;
+		std::cout << "  " << (i + 1) << ". " << players[playerIdx]->getFactionName() 
+				  << " (Sector " << tokenSector << ", distance " << distance << ")" << std::endl;
+	}
+	std::cout << std::endl;
+}
+
 bool Game::checkVictory() {
 	for (int i = 0; i < playerCount; ++i) {
 		if (_map.countControlledTerritories(i) >= 3) {
@@ -286,7 +348,7 @@ void Game::processPhase() {
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, useExtendedSpiceBlow,
 		spiceDeck, spiceDeckIndex, spiceDiscardPileA, spiceDiscardPileB,
-		treacheryDeck, beneGesseritCharity, rng, interactiveMode
+		treacheryDeck, turnOrder, beneGesseritCharity, rng, interactiveMode
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {
@@ -294,11 +356,35 @@ void Game::processPhase() {
 	} else {
 		std::cout << "  " << getPhaseName(currentPhase) << " Phase (TODO)" << std::endl;
 	}
+	
+	// Update turn order after storm phase
+	if (currentPhase == gamePhase::STORM) {
+		setTurnOrder();
+	}
 }
 
 void Game::processTurn() {
 	turnNumber++;
 	std::cout << "\n--- Turn " << turnNumber << " ---" << std::endl;
+	
+	// Reset leader battle status at start of turn
+	for (int i = 0; i < playerCount; ++i) {
+		players[i]->resetLeaderBattleStatus();
+	}
+	
+	// Print faction leaders
+	std::cout << "Leaders at start of turn: " << std::endl;
+	for (int i = 0; i < playerCount; ++i) {
+		const auto& aliveLeaders = players[i]->getAliveLeaders();
+		if (!aliveLeaders.empty()) {
+			std::cout << "  " << players[i]->getFactionName() << ": ";
+			for (size_t j = 0; j < aliveLeaders.size(); j++) {
+				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
+				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << "\n";
+		}
+	}
 	
 	// Execute all phases
 	for (int i = 0; i < NUM_PHASES; ++i) {

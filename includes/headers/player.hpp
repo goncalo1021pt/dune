@@ -3,8 +3,9 @@
 #include <vector>
 #include <string>
 #include "settings.hpp"
+#include "leader.hpp"
 
-// Forward declaration
+// Forward declarations
 enum class faction;
 
 class Player {
@@ -20,6 +21,9 @@ class Player {
 		int unitsDeployed;
 		int unitsDestroyed;
 		int freeReviveModifier;
+
+		std::vector<Leader> aliveLeaders;
+		std::vector<Leader> deadLeaders;
 
 		std::vector<std::string> treacheryCards;
 
@@ -62,4 +66,12 @@ class Player {
 		void addTraitorCard(const std::string& card);
 		void removeTraitorCard(const std::string& card);
 		const std::vector<std::string>& getTraitorCards() const;
+
+		// Leader management
+		void addLeader(const Leader& leader);
+		void killLeader(size_t aliveIndex);
+		void reviveLeader(size_t deadIndex);
+		const std::vector<Leader>& getAliveLeaders() const;
+		const std::vector<Leader>& getDeadLeaders() const;
+		void resetLeaderBattleStatus();
 };

@@ -89,16 +89,21 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 	int currentBid = 0;
 	int highestBidder = -1;
 	int currentPlayerIndex = startingPlayerIndex;
-	bool anyoneRaised = false; // Track if anyone actually bid
+	bool anyoneRaised = false;
+	int playersOfferedThisRound = 0;
+	int totalEligible = activeBidders.size();
 
-	// Bidding loop: continue until only 1 player remains or everyone passes initially
-	while (activeBidders.size() > 1) {
+	// First, give everyone a chance to bid initially
+	// Then continue bidding with remaining players until only 1 remains
+	while (!activeBidders.empty()) {
 		// Get next active player in round-robin
 		currentPlayerIndex = getNextActivePlayer(activeBidders, currentPlayerIndex, ctx.playerCount);
 
 		if (currentPlayerIndex < 0) {
 			break;
 		}
+
+		playersOfferedThisRound++;
 
 		// Player decides: bid or pass
 		int newBid = currentBid;
@@ -112,29 +117,29 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 			// Player passes - remove from active bidders
 			activeBidders.erase(currentPlayerIndex);
 		}
-	}
 
-	// If no one raised (everyone passed), return -1 to signal all-pass
-	if (!anyoneRaised) {
-		std::cout << "      Everyone passed on this card." << std::endl;
-		return -1;
-	}
-
-	// Last player standing is the winner
-	if (activeBidders.size() == 1 && anyoneRaised) {
-		highestBidder = *activeBidders.begin();
-		std::cout << "      Winner: " << ctx.players[highestBidder]->getFactionName() 
-		          << " (bid: " << currentBid << " spice)";
-		
-		if (currentBid > 0) {
-			int spaceBefore = ctx.players[highestBidder]->getSpice();
-			ctx.players[highestBidder]->removeSpice(currentBid); // Use removeSpice for deduction
-			int spaceAfter = ctx.players[highestBidder]->getSpice();
-			std::cout << " - pays " << currentBid << " spice (" << spaceBefore << " -> " << spaceAfter << ")";
+		// If this was the first round and everyone passed without anyone raising, end bidding
+		if (playersOfferedThisRound >= totalEligible && !anyoneRaised) {
+			std::cout << "      Everyone passed on this card." << std::endl;
+			return -1;
 		}
-		std::cout << std::endl;
-		
-		return highestBidder;
+
+		// If only 1 player remains and someone has raised, they win
+		if (activeBidders.size() == 1 && anyoneRaised) {
+			highestBidder = *activeBidders.begin();
+			std::cout << "      Winner: " << ctx.players[highestBidder]->getFactionName() 
+			          << " (bid: " << currentBid << " spice)";
+			
+			if (currentBid > 0) {
+				int spaceBefore = ctx.players[highestBidder]->getSpice();
+				ctx.players[highestBidder]->removeSpice(currentBid);
+				int spaceAfter = ctx.players[highestBidder]->getSpice();
+				std::cout << " - pays " << currentBid << " spice (" << spaceBefore << " -> " << spaceAfter << ")";
+			}
+			std::cout << std::endl;
+			
+			return highestBidder;
+		}
 	}
 
 	return -1;

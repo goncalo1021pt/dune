@@ -42,6 +42,9 @@ struct PhaseContext {
 	// Treachery state
 	TreacheryDeck& treacheryDeck;
 
+	// Turn order
+	std::vector<int>& turnOrder;
+
 	// Rule toggles
 	bool& beneGesseritCharity;
 
@@ -69,6 +72,7 @@ struct PhaseContext {
 		std::vector<spiceCard>& spiceDiscardPileA_,
 		std::vector<spiceCard>& spiceDiscardPileB_,
 		TreacheryDeck& treacheryDeck_,
+		std::vector<int>& turnOrder_,
 		bool& beneGesseritCharity_,
 		std::mt19937& rng_,
 		bool interactiveMode_ = false
@@ -82,6 +86,7 @@ struct PhaseContext {
 		  spiceDeck(spiceDeck_), spiceDeckIndex(spiceDeckIndex_),
 		  spiceDiscardPileA(spiceDiscardPileA_), spiceDiscardPileB(spiceDiscardPileB_),
 		  treacheryDeck(treacheryDeck_),
+		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
 		  interactiveMode(interactiveMode_) {}
 };

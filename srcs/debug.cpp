@@ -19,7 +19,7 @@ void GameDebugger::printGameState() {
 
 	std::cout << "\n";
 	std::cout << "╔════════════════════════════════════════════════════════════════╗\n";
-	std::cout << "║               DUNE GAME STATE DEBUG OUTPUT                      ║\n";
+	std::cout << "║               DUNE GAME STATE DEBUG OUTPUT                     ║\n";
 	std::cout << "╚════════════════════════════════════════════════════════════════╝\n";
 
 	// Game info
@@ -28,13 +28,24 @@ void GameDebugger::printGameState() {
 	std::cout << "  Storm Sector: " << gameInstance->getStormSector() << "\n";
 	std::cout << "  Next Storm Card: " << gameInstance->getNextStormCard() << "\n";
 
+	// Turn order
+	const auto& turnOrder = gameInstance->getTurnOrder();
+	if (!turnOrder.empty()) {
+		std::cout << "  Turn Order: ";
+		for (size_t i = 0; i < turnOrder.size(); i++) {
+			std::cout << gameInstance->getPlayer(turnOrder[i])->getFactionName();
+			if (i < turnOrder.size() - 1) std::cout << " -> ";
+		}
+		std::cout << "\n";
+	}
+
 	// Player info
 	std::cout << "\n[PLAYERS]\n";
 	for (int i = 0; i < gameInstance->getPlayerCount(); i++) {
 		const Player* p = gameInstance->getPlayer(i);
 		
-		std::cout << "  " << std::setw(18) << p->getFactionName() << ": ";
-		std::cout << std::setw(3) << p->getSpice() << " spice | ";
+		std::cout << "  " << std::left << std::setw(12) << p->getFactionName() << ": ";
+		std::cout << std::right << std::setw(2) << p->getSpice() << " spice | ";
 		std::cout << "Reserve: " << std::setw(2) << p->getUnitsReserve() << " units";
 		
 		if (p->getEliteUnitsReserve() > 0) {
@@ -43,6 +54,29 @@ void GameDebugger::printGameState() {
 		
 		std::cout << " | Deployed: " << std::setw(2) << p->getUnitsDeployed();
 		std::cout << "\n";
+
+		// Leaders
+		const auto& aliveLeaders = p->getAliveLeaders();
+		const auto& deadLeaders = p->getDeadLeaders();
+		
+		if (!aliveLeaders.empty()) {
+			std::cout << "    Alive Leaders: ";
+			for (size_t j = 0; j < aliveLeaders.size(); j++) {
+				std::cout << aliveLeaders[j].name << " (power:" << aliveLeaders[j].power << ")";
+				if (aliveLeaders[j].hasBattled) std::cout << "[battled]";
+				if (j < aliveLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << "\n";
+		}
+		
+		if (!deadLeaders.empty()) {
+			std::cout << "    Dead Leaders: ";
+			for (size_t j = 0; j < deadLeaders.size(); j++) {
+				std::cout << deadLeaders[j].name << " (power:" << deadLeaders[j].power << ")";
+				if (j < deadLeaders.size() - 1) std::cout << ", ";
+			}
+			std::cout << "\n";
+		}
 
 		// Treachery cards
 		const auto& treacheryCards = p->getTreacheryCards();
@@ -101,6 +135,6 @@ void GameDebugger::printGameState() {
 	}
 
 	std::cout << "\n╔════════════════════════════════════════════════════════════════╗\n";
-	std::cout << "║                    END OF DEBUG OUTPUT                          ║\n";
+	std::cout << "║                    END OF DEBUG OUTPUT                         ║\n";
 	std::cout << "╚════════════════════════════════════════════════════════════════╝\n\n";
 }
