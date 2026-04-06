@@ -17,11 +17,11 @@ int StormPhase::drawStormCard(std::vector<int>& stormDeck, std::mt19937& rng) {
 
 void StormPhase::moveStorm(int sectorsToMove, int& stormSector) {
 	stormSector += sectorsToMove;
-	while (stormSector > 18) {
-		stormSector -= 18;
+	while (stormSector > TOTAL_SECTORS) {
+		stormSector -= TOTAL_SECTORS;
 	}
 	while (stormSector < 1) {
-		stormSector += 18;
+		stormSector += TOTAL_SECTORS;
 	}
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "phase.hpp"
+#include "settings.hpp"
 
 class StormPhase : public Phase {
 public:

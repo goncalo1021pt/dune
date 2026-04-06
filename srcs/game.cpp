@@ -184,7 +184,7 @@ void Game::setTurnOrder() {
 	for (int i = 0; i < playerCount; ++i) {
 		int tokenSector = playerTokenSectors[i];
 		// Distance counter-clockwise from storm to this player's token
-		int distance = (tokenSector - stormSector + 18) % 18;
+		int distance = (tokenSector - stormSector + TOTAL_SECTORS) % TOTAL_SECTORS;
 		playersWithSectors.push_back({i, distance});
 	}
 	
@@ -202,7 +202,7 @@ void Game::setTurnOrder() {
 	for (size_t i = 0; i < turnOrder.size(); ++i) {
 		int playerIdx = turnOrder[i];
 		int tokenSector = playerTokenSectors[playerIdx];
-		int distance = (tokenSector - stormSector + 18) % 18;
+		int distance = (tokenSector - stormSector + TOTAL_SECTORS) % TOTAL_SECTORS;
 		std::cout << "  " << (i + 1) << ". " << players[playerIdx]->getFactionName() 
 				  << " (Sector " << tokenSector << ", distance " << distance << ")" << std::endl;
 	}
