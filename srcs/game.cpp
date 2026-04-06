@@ -10,6 +10,7 @@
 #include "phases/revival_phase.hpp"
 #include "phases/bidding_phase.hpp"
 #include "phases/battle_phase.hpp"
+#include "phases/mentat_pause_phase.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -34,7 +35,7 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
 	  treacheryDeck(rng), phases(), interactiveMode(interactive),
-	  eventLogger(std::make_unique<ConsoleEventLogger>()) {
+	  eventLogger(std::make_unique<ConsoleEventLogger>()), gameEnded(false) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -167,7 +168,7 @@ void Game::initializePhases() {
 	phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)]  = std::make_unique<ShipAndMovePhase>();
 	phases[static_cast<int>(gamePhase::BATTLE)]         = std::make_unique<BattlePhase>();
 	phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = std::make_unique<SpiceCollectionPhase>();
-	// phases[static_cast<int>(gamePhase::MENTAT_PAUSE)] = MENTAT_PAUSE (TODO)
+	phases[static_cast<int>(gamePhase::MENTAT_PAUSE)]   = std::make_unique<MentatPausePhase>();
 }
 
 void Game::initializeStormDeck() {
@@ -258,6 +259,9 @@ void Game::processPhase() {
 		eventLogger->logDebug(getPhaseName(currentPhase) + " Phase (TODO)");
 	}
 	
+	// Capture gameEnded flag from phase context
+	gameEnded = ctx.gameEnded;
+	
 	// Update turn order after storm phase
 	if (currentPhase == gamePhase::STORM) {
 		setTurnOrder();
@@ -301,19 +305,15 @@ void Game::processTurn() {
 void Game::runGame() {
 	initializeGame();
 	
-	while (turnNumber < MAX_TURNS) {
+	while (turnNumber < MAX_TURNS && !gameEnded) {
 		processTurn();
-		
-		if (checkVictory()) {
-			break;
-		}
 		
 		if (eventLogger) {
 			eventLogger->logDebug("");
 		}
 	}
 	
-	if (turnNumber >= MAX_TURNS) {
+	if (turnNumber >= MAX_TURNS && !gameEnded) {
 		if (eventLogger) {
 			eventLogger->logDebug("=== GAME ENDED: Max turns reached ===");
 		}

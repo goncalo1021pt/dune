@@ -102,6 +102,9 @@ class Game {
 		// Event logging
 		std::unique_ptr<EventLogger> eventLogger;
 
+		// Game state
+		bool gameEnded;
+
 		bool checkVictory();
 		void initializePhases();
 		void initializeStormDeck();
