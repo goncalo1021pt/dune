@@ -8,6 +8,7 @@
 #include "phases/choam_charity_phase.hpp"
 #include "phases/revival_phase.hpp"
 #include "phases/bidding_phase.hpp"
+#include "phases/battle_phase.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -147,6 +148,9 @@ void Game::initializeGame() {
 	}
 	std::cout << std::endl;
 	
+	// Initialize turn order (will be recalculated after each storm phase)
+	setTurnOrder();
+	
 	std::cout << "\nPlayers initialized:" << std::endl;
 	for (int i = 0; i < playerCount; ++i) {
 		std::cout << "  " << players[i]->getFactionName() << ": " 
@@ -177,7 +181,7 @@ void Game::initializePhases() {
 	phases[static_cast<int>(gamePhase::BIDDING)]        = std::make_unique<BiddingPhase>();
 	phases[static_cast<int>(gamePhase::REVIVAL)]        = std::make_unique<RevivalPhase>();
 	phases[static_cast<int>(gamePhase::SHIP_AND_MOVE)]  = std::make_unique<ShipAndMovePhase>();
-	// phases[static_cast<int>(gamePhase::BATTLE)]      = BATTLE (TODO)
+	phases[static_cast<int>(gamePhase::BATTLE)]         = std::make_unique<BattlePhase>();
 	phases[static_cast<int>(gamePhase::SPICE_COLLECTION)] = std::make_unique<SpiceCollectionPhase>();
 	// phases[static_cast<int>(gamePhase::MENTAT_PAUSE)] = MENTAT_PAUSE (TODO)
 }
@@ -344,7 +348,7 @@ void Game::processPhase() {
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, useExtendedSpiceBlow,
 		spiceDeck, spiceDeckIndex, spiceDiscardPileA, spiceDiscardPileB,
-		treacheryDeck, beneGesseritCharity, rng, interactiveMode
+		treacheryDeck, turnOrder, beneGesseritCharity, rng, interactiveMode
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {
