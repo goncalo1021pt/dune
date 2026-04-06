@@ -85,7 +85,7 @@ void GameMap::linkNeighbours() {
 	});
 	linkTerritoryNeighbours("Carthag", {
 		"Arsunt", "Imperial Basin", 
-		"Tsimpo", "hagga Basin"
+		"Tsimpo", "Hagga Basin"
 	});
 	linkTerritoryNeighbours("Sietch Tabr", {
 		"Plastic Basin", "Rock Outcroppings", 
@@ -102,7 +102,7 @@ void GameMap::linkNeighbours() {
 	//ROCK
 	linkTerritoryNeighbours("Shield Wall", {
 		"Hole in the Rock", "Gara Kulon",
-		"False Wall East", "Imperial Basin"
+		"False Wall East", "Imperial Basin",
 		"Sihaya Ridge", "Pasty Mesa",
 		"The Minor Erg"
 	});
@@ -145,7 +145,7 @@ void GameMap::linkNeighbours() {
 	linkTerritoryNeighbours("Cielago West", {
 		"Habbanya Ridge Flat", "Cielago North", 
 		"Meridian", "Wind Pass North",
-		"Wind Pass", "Fasle Wall West"
+		"Wind Pass", "False Wall West"
 		"Cielago Depression"
 	});
 	linkTerritoryNeighbours("Meridian", {
@@ -173,7 +173,7 @@ void GameMap::linkNeighbours() {
 		"Cielago North"
 	});
 	linkTerritoryNeighbours("Harg Pass", {
-		"False Wall South", "Fasle Wall East",
+		"False Wall South", "False Wall East",
 		"Cielago North", "The Minor Erg"
 		"Polar Sink"
 	});
@@ -183,7 +183,7 @@ void GameMap::linkNeighbours() {
 		"Red Chasm"
 	});
 	linkTerritoryNeighbours("The Minor Erg", {
-		"Fasle Wall South", "False Wall East",
+		"False Wall South", "False Wall East",
 		"Harg Pass", "Pasty Mesa",
 		"Shield Wall"
 	});
@@ -279,7 +279,7 @@ void GameMap::linkNeighbours() {
 
 	// --- POLAR SINK — borders all inner-ring territories ---
 	linkTerritoryNeighbours("Polar Sink", {
-		"Fasle Wall East", "Harg Pass", 
+		"False Wall East", "Harg Pass", 
 		"Cielago North", "Wind Pass North",
 		"Imperial Basin", "Arsunt",
 		"Hagga Basin", "Wind Pass"
