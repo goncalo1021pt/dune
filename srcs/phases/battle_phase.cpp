@@ -25,10 +25,10 @@ void BattlePhase::execute(PhaseContext& ctx) {
 		Player* attacker = view.players[playerIdx];
 		
 		// Find all contested territories where this player has units
-		std::vector<territory*> contestedTerritories;
-		auto& territories = const_cast<std::vector<territory>&>(view.map.getTerritories());
+		std::vector<std::string> contestedTerritories;
+		const auto& territories = view.map.getTerritories();
 		
-		for (auto& terr : territories) {
+		for (const auto& terr : territories) {
 			// Skip Polar Sink (no battles)
 			if (terr.name == "Polar Sink") continue;
 			
@@ -49,7 +49,7 @@ void BattlePhase::execute(PhaseContext& ctx) {
 			}
 			
 			if (contested) {
-				contestedTerritories.push_back(&terr);
+				contestedTerritories.push_back(terr.name);
 			}
 		}
 
@@ -59,7 +59,7 @@ void BattlePhase::execute(PhaseContext& ctx) {
 				// Ask player which battle to resolve first
 				std::cout << "\n    " << attacker->getFactionName() << "'s contested territories:" << std::endl;
 				for (size_t i = 0; i < contestedTerritories.size(); ++i) {
-					std::cout << "      " << (i + 1) << ". " << contestedTerritories[i]->name << std::endl;
+					std::cout << "      " << (i + 1) << ". " << contestedTerritories[i] << std::endl;
 				}
 				std::cout << "    Choose which to battle (1-" << contestedTerritories.size() << "): ";
 				
@@ -78,15 +78,14 @@ void BattlePhase::execute(PhaseContext& ctx) {
 				choice--; // Convert to 0-indexed
 				
 				// Resolve this battle
-				territory* battleTerritory = contestedTerritories[choice];
-				resolveBattle(ctx, playerIdx, *battleTerritory);
+				resolveBattle(ctx, playerIdx, contestedTerritories[choice]);
 				totalBattles++;
 				
 				// Remove from list
 				contestedTerritories.erase(contestedTerritories.begin() + choice);
 			} else if (!contestedTerritories.empty()) {
 				// Only one contested territory or non-interactive mode
-				resolveBattle(ctx, playerIdx, *contestedTerritories[0]);
+				resolveBattle(ctx, playerIdx, contestedTerritories[0]);
 				totalBattles++;
 				contestedTerritories.erase(contestedTerritories.begin());
 			}
@@ -100,7 +99,7 @@ void BattlePhase::execute(PhaseContext& ctx) {
 	}
 }
 
-void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& battleTerritory) {
+void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::string& territoryName) {
 	auto view = ctx.getBattleView();
 	Player* attacker = view.players[attackerIdx];
 	
@@ -108,7 +107,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& b
 	std::vector<int> defenderIndices;
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		if (i != (size_t)attackerIdx) {
-			int units = view.map.getUnitsInTerritory(battleTerritory.name, i);
+			int units = view.map.getUnitsInTerritory(territoryName, i);
 			if (units > 0) {
 				defenderIndices.push_back(i);
 			}
@@ -117,7 +116,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& b
 
 	if (defenderIndices.empty()) return; // No defenders
 
-	std::cout << "\n    === Battle in " << battleTerritory.name << " ===" << std::endl;
+	std::cout << "\n    === Battle in " << territoryName << " ===" << std::endl;
 	std::cout << "    " << attacker->getFactionName() << " (attacker) vs ";
 	for (size_t i = 0; i < defenderIndices.size(); ++i) {
 		std::cout << view.players[defenderIndices[i]]->getFactionName();
@@ -125,7 +124,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& b
 	}
 	std::cout << std::endl;
 
-	// Get attacker's leader
+	// Get attacker's leaders
 	const auto& aliveLeaders = attacker->getAliveLeaders();
 	if (aliveLeaders.empty()) {
 		std::cout << "    " << attacker->getFactionName() << " has no alive leaders. Battle cannot occur." << std::endl;
@@ -135,16 +134,18 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& b
 	int selectedLeaderIdx = selectLeaderForBattle(ctx, attackerIdx, aliveLeaders.size());
 	if (selectedLeaderIdx < 0) return;
 	
-	Leader* attackerLeader = const_cast<Leader*>(&aliveLeaders[selectedLeaderIdx]);
+	// Mark leader as battled (no const_cast needed)
+	attacker->markLeaderBattled(selectedLeaderIdx);
+	const Leader& attackerLeader = aliveLeaders[selectedLeaderIdx];
 	
 	// Get attacker's wheel value (units to commit/lose)
-	int attackerUnits = view.map.getUnitsInTerritory(battleTerritory.name, attackerIdx);
+	int attackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
 	int wheelValue = getBattleWheelChoice(ctx, attackerIdx, attackerUnits);
 
 	// Calculate attacker's battle value
-	int attackerValue = wheelValue + attackerLeader->power;
+	int attackerValue = wheelValue + attackerLeader.power;
 	std::cout << "    " << attacker->getFactionName() << " battle value: " << wheelValue 
-	          << " (wheel) + " << attackerLeader->power << " (leader) = " << attackerValue << std::endl;
+	          << " (wheel) + " << attackerLeader.power << " (leader) = " << attackerValue << std::endl;
 
 	// For now, pick first defender (in multi-defender scenarios, could be more complex)
 	int defenderIdx = defenderIndices[0];
@@ -155,9 +156,9 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& b
 		std::cout << "    " << defender->getFactionName() << " has no alive leaders. "
 		          << attacker->getFactionName() << " wins by default." << std::endl;
 		// Attacker loses wheelValue units, defender loses all units
-		view.map.removeUnitsFromTerritory(battleTerritory.name, attackerIdx, wheelValue, 0);
-		int defenderAllUnits = view.map.getUnitsInTerritory(battleTerritory.name, defenderIdx);
-		view.map.removeUnitsFromTerritory(battleTerritory.name, defenderIdx, defenderAllUnits, 0);
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
+		int defenderAllUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defenderAllUnits, 0);
 		return;
 	}
 
@@ -165,41 +166,39 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, territory& b
 	int defSelectedLeaderIdx = selectLeaderForBattle(ctx, defenderIdx, defenderLeaders.size());
 	if (defSelectedLeaderIdx < 0) return;
 	
-	Leader* defenderLeader = const_cast<Leader*>(&defenderLeaders[defSelectedLeaderIdx]);
+	// Mark defender leader as battled (no const_cast needed)
+	defender->markLeaderBattled(defSelectedLeaderIdx);
+	const Leader& defenderLeader = defenderLeaders[defSelectedLeaderIdx];
 	
 	// Get defender's wheel value
-	int defenderUnits = view.map.getUnitsInTerritory(battleTerritory.name, defenderIdx);
+	int defenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
 	int defWheelValue = getBattleWheelChoice(ctx, defenderIdx, defenderUnits);
 
-	int defenderValue = defWheelValue + defenderLeader->power;
+	int defenderValue = defWheelValue + defenderLeader.power;
 	std::cout << "    " << defender->getFactionName() << " battle value: " << defWheelValue 
-	          << " (wheel) + " << defenderLeader->power << " (leader) = " << defenderValue << std::endl;
+	          << " (wheel) + " << defenderLeader.power << " (leader) = " << defenderValue << std::endl;
 
 	// Determine winner (attacker wins ties)
 	std::cout << "    Result: ";
 	if (attackerValue > defenderValue) {
 		std::cout << attacker->getFactionName() << " wins!" << std::endl;
 		// Attacker loses wheelValue units, defender loses all units
-		view.map.removeUnitsFromTerritory(battleTerritory.name, attackerIdx, wheelValue, 0);
-		int allDefenderUnits = view.map.getUnitsInTerritory(battleTerritory.name, defenderIdx);
-		view.map.removeUnitsFromTerritory(battleTerritory.name, defenderIdx, allDefenderUnits, 0);
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
+		int allDefenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, allDefenderUnits, 0);
 	} else if (attackerValue < defenderValue) {
 		std::cout << defender->getFactionName() << " wins!" << std::endl;
 		// Defender wins: attacker loses all units, defender loses defWheelValue
-		int allAttackerUnits = view.map.getUnitsInTerritory(battleTerritory.name, attackerIdx);
-		view.map.removeUnitsFromTerritory(battleTerritory.name, attackerIdx, allAttackerUnits, 0);
-		view.map.removeUnitsFromTerritory(battleTerritory.name, defenderIdx, defWheelValue, 0);
+		int allAttackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, allAttackerUnits, 0);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defWheelValue, 0);
 	} else {
 		std::cout << "Tie! " << attacker->getFactionName() << " wins (attacker advantage)." << std::endl;
 		// Attacker loses wheelValue, defender loses all units
-		view.map.removeUnitsFromTerritory(battleTerritory.name, attackerIdx, wheelValue, 0);
-		int allDefenderUnits = view.map.getUnitsInTerritory(battleTerritory.name, defenderIdx);
-		view.map.removeUnitsFromTerritory(battleTerritory.name, defenderIdx, allDefenderUnits, 0);
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
+		int allDefenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, allDefenderUnits, 0);
 	}
-
-	// Mark leaders as having battled
-	attackerLeader->hasBattled = true;
-	defenderLeader->hasBattled = true;
 }
 
 int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int maxUnits) {

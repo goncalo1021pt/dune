@@ -38,7 +38,32 @@ enum class faction {
 	SPACING_GUILD
 };
 
-
+/**
+ * GameUtilities: Common helper functions for game phases
+ * Reduces code duplication across phases
+ */
+namespace GameUtilities {
+	// Iterate through each player and call action
+	template<typename Func>
+	inline void forEachPlayer(const std::vector<Player*>& players, Func action) {
+		for (size_t i = 0; i < players.size(); ++i) {
+			if (players[i]) {
+				action(players[i], i);
+			}
+		}
+	}
+	
+	// Iterate in turn order and call action
+	template<typename Func>
+	inline void forEachPlayerInTurnOrder(const std::vector<Player*>& players, 
+	                                      const std::vector<int>& turnOrder, Func action) {
+		for (int playerIdx : turnOrder) {
+			if (playerIdx >= 0 && playerIdx < (int)players.size() && players[playerIdx]) {
+				action(players[playerIdx], playerIdx);
+			}
+		}
+	}
+}
 
 class Game {
 	private:
@@ -77,8 +102,7 @@ class Game {
 		void setTurnOrder();  // Recalculate turn order based on sector positions
 
 	public:
-		Game(int numPlayers, unsigned int seed = 42);
-		Game(int numPlayers, unsigned int seed, bool interactive);
+		Game(int numPlayers, unsigned int seed = 42, bool interactive = false);
 		~Game();
 
 		void initializeGame();

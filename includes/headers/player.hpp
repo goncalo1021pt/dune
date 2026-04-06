@@ -72,6 +72,8 @@ class Player {
 		void killLeader(size_t aliveIndex);
 		void reviveLeader(size_t deadIndex);
 		const std::vector<Leader>& getAliveLeaders() const;
+		std::vector<Leader>& getAliveLeadersMutable();
 		const std::vector<Leader>& getDeadLeaders() const;
+		void markLeaderBattled(size_t aliveLeaderIndex);
 		void resetLeaderBattleStatus();
 };

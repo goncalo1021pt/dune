@@ -12,15 +12,6 @@
 #include <iostream>
 #include <algorithm>
 
-static const std::string FACTION_NAMES[] = {
-	"Atreides",
-	"Harkonnen",
-	"Fremen",
-	"Emperor",
-	"Spacing Guild",
-	"Bene Gesserit",
-};
-
 static std::string getPhaseName(gamePhase phase) {
 	switch (phase) {
 		case gamePhase::STORM: return "STORM";
@@ -34,29 +25,6 @@ static std::string getPhaseName(gamePhase phase) {
 		case gamePhase::MENTAT_PAUSE: return "MENTAT_PAUSE";
 		default: return "UNKNOWN";
 	}
-}
-
-Game::Game(int numPlayers, unsigned int seed) 
-	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
-	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
-	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
-	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
-	  treacheryDeck(rng), phases(), interactiveMode(false) {
-	
-	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
-		throw std::invalid_argument("Number of players must be between " + 
-			std::to_string(MIN_PLAYERS) + " and " + std::to_string(MAX_PLAYERS));
-	}
-	
-	for (int i = 0; i < playerCount; ++i) {
-		players.push_back(new Player(i, FACTION_NAMES[i]));
-		// Assign all 5 default leaders (power 1-5) to each faction
-		for (int power = 1; power <= 5; ++power) {
-			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
-		}
-	}
-
-	initializePhases();
 }
 
 Game::Game(int numPlayers, unsigned int seed, bool interactive)

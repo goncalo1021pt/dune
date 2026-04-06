@@ -64,5 +64,8 @@ class GameMap {
 		
 		int countFactionsInTerritory(const std::string& territoryName) const;
 		bool canAddFactionToTerritory(const std::string& territoryName, int factionIndex) const;
+		
+		// Utility methods
+		std::vector<std::string> getTerritoriesWithUnits(int factionIndex) const;
 };
 

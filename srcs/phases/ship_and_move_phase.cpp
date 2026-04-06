@@ -196,7 +196,7 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	int movementRange = calculateMovementRange(ctx, player->getFactionIndex());
 	
 	// Get territories where player has units
-	std::vector<std::string> territoriesWithUnits = getTerritoriesWithUnits(ctx, player->getFactionIndex());
+	std::vector<std::string> territoriesWithUnits = view.map.getTerritoriesWithUnits(player->getFactionIndex());
 	
 	if (territoriesWithUnits.empty()) {
 		std::cout << "    Movement: No units on map to move" << std::endl;
@@ -332,22 +332,7 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 	return true;
 }
 
-std::vector<std::string> ShipAndMovePhase::getTerritoriesWithUnits(
-	PhaseContext& ctx, int factionIndex) const {
-	
-	auto view = ctx.getShipAndMoveView();
 
-	std::vector<std::string> territories;
-	
-	for (const auto& terr : view.map.getTerritories()) {
-		int unitCount = view.map.getUnitsInTerritory(terr.name, factionIndex);
-		if (unitCount > 0) {
-			territories.push_back(terr.name);
-		}
-	}
-	
-	return territories;
-}
 
 bool ShipAndMovePhase::isValidMovement(PhaseContext& ctx, int factionIndex,
                                        const std::string& fromTerritory,
@@ -436,7 +421,7 @@ ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 	decision.eliteUnits = 0;
 	
 	// Get territories with units
-	std::vector<std::string> territoriesWithUnits = getTerritoriesWithUnits(ctx, player->getFactionIndex());
+	std::vector<std::string> territoriesWithUnits = view.map.getTerritoriesWithUnits(player->getFactionIndex());
 	
 	if (territoriesWithUnits.empty()) {
 		return decision;

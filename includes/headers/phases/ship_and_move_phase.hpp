@@ -76,8 +76,6 @@ private:
 	               const std::string& toTerritory,
 	               int normalUnits, int eliteUnits);
 	
-	std::vector<std::string> getTerritoriesWithUnits(PhaseContext& ctx, int factionIndex) const;
-	
 	// === AI DECISION METHODS (Placeholder) ===
 
 	struct DeploymentDecision {

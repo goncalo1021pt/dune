@@ -111,17 +111,8 @@ void GameDebugger::printGameState() {
 				for (const auto& stack : territory.unitsPresent) {
 					if (!first) std::cout << ", ";
 					
-					// Get faction name
-					std::string factionName;
-					switch (stack.factionOwner) {
-						case 0: factionName = "Atreides"; break;
-						case 1: factionName = "Harkonnen"; break;
-						case 2: factionName = "Bene Gesserit"; break;
-						case 3: factionName = "Fremen"; break;
-						case 4: factionName = "Emperor"; break;
-						case 5: factionName = "Spacing Guild"; break;
-						default: factionName = "Unknown"; break;
-					}
+					// Get faction name using centralized utility
+					std::string factionName = getFactionName(stack.factionOwner);
 					
 					std::cout << factionName << ": " << stack.normal_units;
 					if (stack.elite_units > 0) {
