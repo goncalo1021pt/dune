@@ -98,15 +98,14 @@ void Game::initializeGame() {
 	initializeStormDeck();
 	std::cout << "\nStorm will be placed randomly during Turn 1 STORM phase" << std::endl;
 	
-	int tokenSectors[] = {2, 5, 8, 11, 14, 17};
-	std::uniform_int_distribution<> offsetDist(0, 5);
+	std::uniform_int_distribution<> offsetDist(0, NUM_TOKEN_SECTORS - 1);
 	int randomOffset = offsetDist(rng);
 	
 	playerTokenSectors.clear();
-	int spacing = 6 / playerCount;
+	int spacing = NUM_TOKEN_SECTORS / playerCount;
 	for (int i = 0; i < playerCount; ++i) {
-		int index = (randomOffset + i * spacing) % 6;
-		playerTokenSectors.push_back(tokenSectors[index]);
+		int index = (randomOffset + i * spacing) % NUM_TOKEN_SECTORS;
+		playerTokenSectors.push_back(TOKEN_SECTORS[index]);
 	}
 	std::cout << "Player tokens placed at sectors:";
 	for (int i = 0; i < playerCount; ++i) {

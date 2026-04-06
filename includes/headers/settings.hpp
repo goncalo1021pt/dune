@@ -16,6 +16,8 @@ namespace GameConstants {
     constexpr int STARTING_SPECIAL_UNITS = 0;
 	constexpr int MAX_TREACHERY_CARDS = 4;
 	constexpr int MAX_TRAITOR_CARDS = 4;
+	constexpr int TOKEN_SECTORS[] = {2, 5, 8, 11, 14, 17};
+	constexpr int NUM_TOKEN_SECTORS = 6;
 	
 	// Faction name mapping
 	static constexpr std::array<const char*, 6> FACTION_NAMES = {{
