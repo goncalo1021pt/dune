@@ -23,10 +23,10 @@ private:
 	/**
 	 * Add spice production from the three special cities
 	 */
-	void addCitySpiceProduction(PhaseContext& ctx);
+	void addCitySpiceProduction(PhaseContext::SpiceCollectionView& ctx);
 
 	/**
 	 * Collect spice from all territories with units
 	 */
-	void collectSpiceFromTerritories(PhaseContext& ctx);
+	void collectSpiceFromTerritories(PhaseContext::SpiceCollectionView& ctx);
 };

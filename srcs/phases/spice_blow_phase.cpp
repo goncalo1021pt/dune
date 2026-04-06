@@ -27,20 +27,23 @@ void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, Ga
 void SpiceBlowPhase::execute(PhaseContext& ctx) {
 	std::cout << "  SPICE_BLOW Phase" << std::endl;
 
-	const int blowCount = ctx.spiceDeck.isUsingExtendedSpiceBlow() ? 2 : 1;
+	// Get minimal view (only what this phase needs)
+	auto view = ctx.getSpiceBlowView();
+
+	const int blowCount = view.spiceDeck.isUsingExtendedSpiceBlow() ? 2 : 1;
 
 	for (int blowIndex = 0; blowIndex < blowCount; ++blowIndex) {
-		spiceCard card = ctx.spiceDeck.drawCard();
-		const int discardPileIndex = ctx.spiceDeck.isUsingExtendedSpiceBlow() ? blowIndex : 0;
+		spiceCard card = view.spiceDeck.drawCard();
+		const int discardPileIndex = view.spiceDeck.isUsingExtendedSpiceBlow() ? blowIndex : 0;
 		const std::vector<spiceCard>& targetDiscardPile =
-			(ctx.spiceDeck.isUsingExtendedSpiceBlow() && discardPileIndex == 1) 
-				? ctx.spiceDeck.getDiscardPileB() 
-				: ctx.spiceDeck.getDiscardPileA();
+			(view.spiceDeck.isUsingExtendedSpiceBlow() && discardPileIndex == 1) 
+				? view.spiceDeck.getDiscardPileB() 
+				: view.spiceDeck.getDiscardPileA();
 
 		if (card.type == spiceCardType::WORM) {
 			std::cout << "    Draw " << (blowIndex + 1) << ": WORM" << std::endl;
 
-			if (ctx.turnNumber > 1) {
+			if (view.turnNumber > 1) {
 				std::cout << "    NEXUS triggered (alliances not implemented yet)" << std::endl;
 			}
 
@@ -51,27 +54,27 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 				if (topDiscardCard.type != spiceCardType::LOCATION) {
 					std::cout << "    Worm resolves with no effect (top discard card is WORM)" << std::endl;
 				} else {
-					territory* targetTerritory = ctx.map.getTerritory(topDiscardCard.territoryName);
+					territory* targetTerritory = view.map.getTerritory(topDiscardCard.territoryName);
 					if (targetTerritory == nullptr) {
 						std::cout << "    Worm resolves with no effect (invalid target territory)" << std::endl;
 					} else if (targetTerritory->spiceAmount <= 0) {
 						std::cout << "    Worm resolves on " << topDiscardCard.territoryName
 						          << " with no effect (no spice present)" << std::endl;
 					} else {
-						resolveWormOnTerritory(topDiscardCard.territoryName, ctx.map);
+						resolveWormOnTerritory(topDiscardCard.territoryName, view.map);
 					}
 				}
 			}
 
-			ctx.spiceDeck.discardCard(card, discardPileIndex);
+			view.spiceDeck.discardCard(card, discardPileIndex);
 			continue;
 		}
 
-		territory* terr = ctx.map.getTerritory(card.territoryName);
+		territory* terr = view.map.getTerritory(card.territoryName);
 		if (terr == nullptr) {
 			std::cout << "    Draw " << (blowIndex + 1)
 			          << ": invalid territory card discarded" << std::endl;
-			ctx.spiceDeck.discardCard(card, discardPileIndex);
+			view.spiceDeck.discardCard(card, discardPileIndex);
 			continue;
 		}
 
@@ -81,6 +84,6 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 		          << card.territoryName << " (" << card.spiceAmount << " spice)"
 		          << " -> territory now has " << terr->spiceAmount << std::endl;
 
-		ctx.spiceDeck.discardCard(card, discardPileIndex);
+		view.spiceDeck.discardCard(card, discardPileIndex);
 	}
 }

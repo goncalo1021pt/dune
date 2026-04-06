@@ -14,11 +14,14 @@
 
 void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	std::cout << "  SHIP_AND_MOVE Phase" << std::endl;
+
+	// Get view for this phase
+	auto view = ctx.getShipAndMoveView();
 	
 	// Each player takes their turn in order (using turn order from storm calculation)
-	for (int i = 0; i < ctx.playerCount; ++i) {
-		int playerIndex = ctx.turnOrder[i];
-		Player* player = ctx.players[playerIndex];
+	for (size_t i = 0; i < view.turnOrder.size(); ++i) {
+		int playerIndex = view.turnOrder[i];
+		Player* player = view.players[playerIndex];
 		std::cout << "\n    --- " << player->getFactionName() << "'s Turn ---" << std::endl;
 		
 		// 1. Shipment (deployment)
@@ -38,6 +41,8 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 // ============================================================================
 
 bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) {
+	auto view = ctx.getShipAndMoveView();
+
 	// Check if player has units to deploy
 	if (player->getUnitsReserve() <= 0) {
 		std::cout << "    Shipment: No units in reserve to deploy" << std::endl;
@@ -50,7 +55,7 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	// Get deployment decision (interactive or AI)
 	DeploymentDecision decision;
 	
-	if (ctx.interactiveMode) {
+	if (view.interactiveMode) {
 		// Interactive mode: get player choice
 		auto interactiveChoice = InteractiveInput::getDeploymentDecision(ctx, player, validTargets);
 		decision.territoryName = interactiveChoice.territoryName;
@@ -92,16 +97,17 @@ int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCou
 std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	PhaseContext& ctx, int factionIndex) const {
 	
+	auto view = ctx.getShipAndMoveView();
 	std::vector<std::string> validTargets;
 	
-	for (const auto& terr : ctx.map.getTerritories()) {
+	for (const auto& terr : view.map.getTerritories()) {
 		// Skip Polar Sink (cannot deploy there directly)
 		if (terr.terrain == terrainType::northPole) {
 			continue;
 		}
 		
 		// Check if faction can add units to this territory
-		if (ctx.map.canAddFactionToTerritory(terr.name, factionIndex)) {
+		if (view.map.canAddFactionToTerritory(terr.name, factionIndex)) {
 			validTargets.push_back(terr.name);
 		}
 	}
@@ -112,7 +118,8 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
                                    const std::string& territoryName, 
                                    int normalUnits, int eliteUnits) {
-	
+	auto view = ctx.getShipAndMoveView();
+
 	int totalUnits = normalUnits + eliteUnits;
 	
 	// Validation
@@ -121,7 +128,7 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 		return false;
 	}
 	
-	territory* terr = ctx.map.getTerritory(territoryName);
+	territory* terr = view.map.getTerritory(territoryName);
 	if (terr == nullptr) {
 		return false;
 	}
@@ -144,7 +151,7 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	// Execute deployment
 	player->removeSpice(cost);
 	player->deployUnits(totalUnits);
-	ctx.map.addUnitsToTerritory(territoryName, player->getFactionIndex(), 
+	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(), 
 	                            normalUnits, eliteUnits);
 	
 	std::cout << "    Shipment: Deployed " << totalUnits << " units to " 
@@ -159,11 +166,13 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 bool ShipAndMovePhase::isValidDeployment(PhaseContext& ctx, int factionIndex,
                                          const std::string& territoryName, 
                                          int unitCount) const {
+	auto view = ctx.getShipAndMoveView();
+
 	if (unitCount <= 0) {
 		return false;
 	}
 	
-	territory* terr = ctx.map.getTerritory(territoryName);
+	territory* terr = view.map.getTerritory(territoryName);
 	if (terr == nullptr) {
 		return false;
 	}
@@ -174,7 +183,7 @@ bool ShipAndMovePhase::isValidDeployment(PhaseContext& ctx, int factionIndex,
 	}
 	
 	// Check territory occupancy rules
-	return ctx.map.canAddFactionToTerritory(territoryName, factionIndex);
+	return view.map.canAddFactionToTerritory(territoryName, factionIndex);
 }
 
 // ============================================================================
@@ -182,6 +191,8 @@ bool ShipAndMovePhase::isValidDeployment(PhaseContext& ctx, int factionIndex,
 // ============================================================================
 
 bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) {
+	auto view = ctx.getShipAndMoveView();
+
 	int movementRange = calculateMovementRange(ctx, player->getFactionIndex());
 	
 	// Get territories where player has units
@@ -198,7 +209,7 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	// Get movement decision (interactive or AI)
 	MovementDecision decision;
 	
-	if (ctx.interactiveMode) {
+	if (view.interactiveMode) {
 		// Interactive mode: get player choice
 		auto interactiveChoice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
 		decision.fromTerritory = interactiveChoice.fromTerritory;
@@ -225,9 +236,11 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 }
 
 int ShipAndMovePhase::calculateMovementRange(PhaseContext& ctx, int factionIndex) const {
+	auto view = ctx.getShipAndMoveView();
+
 	// Check if faction controls Arrakeen or Carthag
-	bool controlsArrakeen = ctx.map.isControlled("Arrakeen", factionIndex);
-	bool controlsCarthag = ctx.map.isControlled("Carthag", factionIndex);
+	bool controlsArrakeen = view.map.isControlled("Arrakeen", factionIndex);
+	bool controlsCarthag = view.map.isControlled("Carthag", factionIndex);
 	
 	if (controlsArrakeen || controlsCarthag) {
 		return 3;  // Special movement
@@ -242,9 +255,11 @@ std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
 	int movementRange,
 	int factionIndex) const {
 	
+	auto view = ctx.getShipAndMoveView();
+
 	std::vector<std::string> reachable;
 	
-	const territory* source = ctx.map.getTerritory(sourceTerritoryName);
+	const territory* source = view.map.getTerritory(sourceTerritoryName);
 	if (source == nullptr) {
 		return reachable;
 	}
@@ -261,7 +276,7 @@ std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
 		queue.pop();
 		
 		// Add to reachable list (excluding source)
-		if (distance > 0 && ctx.map.canAddFactionToTerritory(currentTerr->name, factionIndex)) {
+		if (distance > 0 && view.map.canAddFactionToTerritory(currentTerr->name, factionIndex)) {
 			reachable.push_back(currentTerr->name);
 		}
 		
@@ -286,7 +301,8 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
                                  const std::string& fromTerritory,
                                  const std::string& toTerritory,
                                  int normalUnits, int eliteUnits) {
-	
+	auto view = ctx.getShipAndMoveView();
+
 	int totalUnits = normalUnits + eliteUnits;
 	
 	// Get movement range for validation
@@ -299,7 +315,7 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 	}
 	
 	// Check if player has enough units in source territory
-	int unitsInSource = ctx.map.getUnitsInTerritory(fromTerritory, factionIndex);
+	int unitsInSource = view.map.getUnitsInTerritory(fromTerritory, factionIndex);
 	if (unitsInSource < totalUnits) {
 		std::cout << "    Movement FAILED: Not enough units in " << fromTerritory
 		          << " (need " << totalUnits << ", have " << unitsInSource << ")" << std::endl;
@@ -307,8 +323,8 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 	}
 	
 	// Execute movement
-	ctx.map.removeUnitsFromTerritory(fromTerritory, factionIndex, normalUnits, eliteUnits);
-	ctx.map.addUnitsToTerritory(toTerritory, factionIndex, normalUnits, eliteUnits);
+	view.map.removeUnitsFromTerritory(fromTerritory, factionIndex, normalUnits, eliteUnits);
+	view.map.addUnitsToTerritory(toTerritory, factionIndex, normalUnits, eliteUnits);
 	
 	std::cout << "    Movement: Moved " << totalUnits << " units from " 
 	          << fromTerritory << " to " << toTerritory << std::endl;
@@ -319,10 +335,12 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 std::vector<std::string> ShipAndMovePhase::getTerritoriesWithUnits(
 	PhaseContext& ctx, int factionIndex) const {
 	
+	auto view = ctx.getShipAndMoveView();
+
 	std::vector<std::string> territories;
 	
-	for (const auto& terr : ctx.map.getTerritories()) {
-		int unitCount = ctx.map.getUnitsInTerritory(terr.name, factionIndex);
+	for (const auto& terr : view.map.getTerritories()) {
+		int unitCount = view.map.getUnitsInTerritory(terr.name, factionIndex);
 		if (unitCount > 0) {
 			territories.push_back(terr.name);
 		}
@@ -351,6 +369,8 @@ bool ShipAndMovePhase::isValidMovement(PhaseContext& ctx, int factionIndex,
 ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	PhaseContext& ctx, Player* player) const {
 	
+	auto view = ctx.getShipAndMoveView();
+
 	DeploymentDecision decision;
 	decision.shouldDeploy = false;
 	decision.normalUnits = 0;
@@ -372,7 +392,7 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	// Simple AI: Deploy to first city if possible (cheapest), otherwise first valid territory
 	std::string targetTerritory;
 	for (const auto& terrName : validTargets) {
-		const territory* terr = ctx.map.getTerritory(terrName);
+		const territory* terr = view.map.getTerritory(terrName);
 		if (terr != nullptr && terr->terrain == terrainType::city) {
 			targetTerritory = terrName;
 			break;
@@ -383,7 +403,7 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 		targetTerritory = validTargets[0];
 	}
 	
-	const territory* terr = ctx.map.getTerritory(targetTerritory);
+	const territory* terr = view.map.getTerritory(targetTerritory);
 	if (terr == nullptr) {
 		return decision;
 	}
@@ -408,6 +428,8 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 	PhaseContext& ctx, Player* player, int movementRange) const {
 	
+	auto view = ctx.getShipAndMoveView();
+
 	MovementDecision decision;
 	decision.shouldMove = false;
 	decision.normalUnits = 0;
@@ -436,7 +458,7 @@ ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 	int bestSpice = -1;
 	
 	for (const auto& terrName : reachable) {
-		const territory* terr = ctx.map.getTerritory(terrName);
+		const territory* terr = view.map.getTerritory(terrName);
 		if (terr != nullptr && terr->spiceAmount > bestSpice) {
 			bestSpice = terr->spiceAmount;
 			bestTarget = terrName;
@@ -446,7 +468,7 @@ ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 	// If no spice found, move to first reachable city
 	if (bestTarget.empty()) {
 		for (const auto& terrName : reachable) {
-			const territory* terr = ctx.map.getTerritory(terrName);
+			const territory* terr = view.map.getTerritory(terrName);
 			if (terr != nullptr && terr->terrain == terrainType::city) {
 				bestTarget = terrName;
 				break;
@@ -460,7 +482,7 @@ ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 	}
 	
 	// Move half of units (at least 1)
-	int unitsInSource = ctx.map.getUnitsInTerritory(sourceTerritory, player->getFactionIndex());
+	int unitsInSource = view.map.getUnitsInTerritory(sourceTerritory, player->getFactionIndex());
 	int unitsToMove = std::max(1, unitsInSource / 2);
 	
 	decision.shouldMove = true;

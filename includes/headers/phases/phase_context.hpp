@@ -50,6 +50,124 @@ struct PhaseContext {
 	// Testing/Debug
 	bool interactiveMode;
 
+	struct StormView {
+		int turnNumber;
+		int& stormSector;
+		int& lastStormCard;
+		int& nextStormCard;
+		bool& hasNextStormCard;
+		std::vector<int>& stormDeck;
+		GameMap& map;
+		std::vector<Player*>& players;
+		std::vector<int>& turnOrder;
+		std::mt19937& rng;
+	};
+
+	/**
+	 * SpiceBlowView: SPICE_BLOW Phase (draws and places spice on territories)
+	 */
+	struct SpiceBlowView {
+		SpiceDeck& spiceDeck;
+		GameMap& map;
+		int turnNumber;
+	};
+
+	/**
+	 * ChoamCharityView: CHOAM_CHARITY Phase (optional spice distribution)
+	 */
+	struct ChoamCharityView {
+		std::vector<Player*>& players;
+		bool& beneGesseritCharity;
+	};
+
+	/**
+	 * BiddingView: BIDDING Phase (bid for treachery cards, use Bene Gesserit)
+	 */
+	struct BiddingView {
+		std::vector<Player*>& players;
+		TreacheryDeck& treacheryDeck;
+		bool& beneGesseritCharity;
+		std::mt19937& rng;
+		bool interactiveMode;
+	};
+
+	/**
+	 * RevivalView: REVIVAL Phase (revive dead leaders)
+	 */
+	struct RevivalView {
+		std::vector<Player*>& players;
+		const std::vector<int>& turnOrder;
+		bool interactiveMode;
+	};
+
+	/**
+	 * ShipAndMoveView: SHIP_AND_MOVE Phase (deploy and move units)
+	 */
+	struct ShipAndMoveView {
+		std::vector<Player*>& players;
+		GameMap& map;
+		SpiceDeck& spiceDeck;
+		const std::vector<int>& turnOrder;
+		int turnNumber;
+		bool interactiveMode;
+	};
+
+	/**
+	 * BattleView: BATTLE Phase (resolve battles, kill units/leaders)
+	 */
+	struct BattleView {
+		std::vector<Player*>& players;
+		GameMap& map;
+		const TreacheryDeck& treacheryDeck;
+		const std::vector<int>& turnOrder;
+		int turnNumber;
+		bool interactiveMode;
+	};
+
+	/**
+	 * SpiceCollectionView: SPICE_COLLECTION Phase (collect spice from territories and cities)
+	 */
+	struct SpiceCollectionView {
+		GameMap& map;
+		std::vector<Player*>& players;
+	};
+
+	// Getter methods for phase views
+	StormView getStormView() {
+		return StormView {
+			turnNumber, stormSector, lastStormCard, nextStormCard, hasNextStormCard,
+			stormDeck, map, players, turnOrder, rng
+		};
+	}
+
+	SpiceBlowView getSpiceBlowView() {
+		return SpiceBlowView { spiceDeck, map, turnNumber };
+	}
+
+	ChoamCharityView getChoamCharityView() {
+		return ChoamCharityView { players, beneGesseritCharity };
+	}
+
+	BiddingView getBiddingView() {
+		return BiddingView { players, treacheryDeck, beneGesseritCharity, rng, interactiveMode };
+	}
+
+	RevivalView getRevivalView() {
+		return RevivalView { players, turnOrder, interactiveMode };
+	}
+
+	ShipAndMoveView getShipAndMoveView() {
+		return ShipAndMoveView { players, map, spiceDeck, turnOrder, turnNumber, interactiveMode };
+	}
+
+	BattleView getBattleView() {
+		return BattleView { players, map, treacheryDeck, turnOrder, turnNumber, interactiveMode };
+	}
+
+	SpiceCollectionView getSpiceCollectionView() {
+		return SpiceCollectionView { map, players };
+	}
+
 	// Constructor: bind all references
 	PhaseContext(
 		int& turnNumber_,

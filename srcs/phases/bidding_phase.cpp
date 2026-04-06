@@ -9,13 +9,16 @@
 void BiddingPhase::execute(PhaseContext& ctx) {
 	std::cout << "  BIDDING Phase" << std::endl;
 
+	// Get view for this phase
+	auto view = ctx.getBiddingView();
+
 	// Step 1: Declare hand counts (for transparency)
 	std::cout << "\n    === Declaration ===" << std::endl;
 	std::vector<int> eligiblePlayers; // Players who can bid (< 4 cards)
 	
-	for (int i = 0; i < ctx.playerCount; ++i) {
-		int handCount = ctx.players[i]->getTreacheryCards().size();
-		std::cout << "    " << ctx.players[i]->getFactionName() << ": " << handCount << " cards";
+	for (size_t i = 0; i < view.players.size(); ++i) {
+		int handCount = view.players[i]->getTreacheryCards().size();
+		std::cout << "    " << view.players[i]->getFactionName() << ": " << handCount << " cards";
 		
 		if (handCount >= 4) {
 			std::cout << " (MUST PASS)" << std::endl;
@@ -35,7 +38,7 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 	std::cout << "\n    === Dealing Cards ===" << std::endl;
 	std::vector<treacheryCard> auctionCards;
 	for (size_t i = 0; i < eligiblePlayers.size(); ++i) {
-		treacheryCard card = ctx.treacheryDeck.drawCard();
+		treacheryCard card = view.treacheryDeck.drawCard();
 		auctionCards.push_back(card);
 		std::cout << "    Card " << (i + 1) << " dealt (face down)" << std::endl;
 	}
@@ -62,8 +65,8 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 		}
 
 		// Award card to winner
-		ctx.players[winner]->addTreacheryCard(auctionCards[cardIdx].name);
-		std::cout << "    " << ctx.players[winner]->getFactionName() << " wins \"" 
+		view.players[winner]->addTreacheryCard(auctionCards[cardIdx].name);
+		std::cout << "    " << view.players[winner]->getFactionName() << " wins \"" 
 		          << auctionCards[cardIdx].name << "\"" << std::endl;
 
 		// Rotate starting bidder for next card
@@ -80,6 +83,8 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 
 int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex, 
                                        const std::vector<int>& eligiblePlayers) {
+	auto view = ctx.getBiddingView();
+
 	std::set<int> activeBidders(eligiblePlayers.begin(), eligiblePlayers.end());
 
 	if (activeBidders.empty()) {
@@ -97,7 +102,7 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 	// Then continue bidding with remaining players until only 1 remains
 	while (!activeBidders.empty()) {
 		// Get next active player in round-robin
-		currentPlayerIndex = getNextActivePlayer(activeBidders, currentPlayerIndex, ctx.playerCount);
+		currentPlayerIndex = getNextActivePlayer(activeBidders, currentPlayerIndex, view.players.size());
 
 		if (currentPlayerIndex < 0) {
 			break;
@@ -127,13 +132,13 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 		// If only 1 player remains and someone has raised, they win
 		if (activeBidders.size() == 1 && anyoneRaised) {
 			highestBidder = *activeBidders.begin();
-			std::cout << "      Winner: " << ctx.players[highestBidder]->getFactionName() 
+			std::cout << "      Winner: " << view.players[highestBidder]->getFactionName() 
 			          << " (bid: " << currentBid << " spice)";
 			
 			if (currentBid > 0) {
-				int spaceBefore = ctx.players[highestBidder]->getSpice();
-				ctx.players[highestBidder]->removeSpice(currentBid);
-				int spaceAfter = ctx.players[highestBidder]->getSpice();
+				int spaceBefore = view.players[highestBidder]->getSpice();
+				view.players[highestBidder]->removeSpice(currentBid);
+				int spaceAfter = view.players[highestBidder]->getSpice();
 				std::cout << " - pays " << currentBid << " spice (" << spaceBefore << " -> " << spaceAfter << ")";
 			}
 			std::cout << std::endl;
@@ -162,9 +167,10 @@ int BiddingPhase::getNextActivePlayer(const std::set<int>& activePlayers, int cu
 }
 
 bool BiddingPhase::askPlayerToBid(PhaseContext& ctx, int playerIndex, int currentBid, int& newBid) {
-	Player* player = ctx.players[playerIndex];
+	auto view = ctx.getBiddingView();
+	Player* player = view.players[playerIndex];
 
-	if (ctx.interactiveMode) {
+	if (view.interactiveMode) {
 		// Interactive mode: prompt player for input
 		std::cout << "      " << player->getFactionName() << "'s turn to bid (current bid: " << currentBid << " spice)" << std::endl;
 		std::cout << "      Your spice: " << player->getSpice() << std::endl;
@@ -210,7 +216,8 @@ bool BiddingPhase::askPlayerToBid(PhaseContext& ctx, int playerIndex, int curren
 }
 
 bool BiddingPhase::aiDecideToBid(PhaseContext& ctx, int playerIndex, int currentBid, int& newBid) {
-	Player* player = ctx.players[playerIndex];
+	auto view = ctx.getBiddingView();
+	Player* player = view.players[playerIndex];
 
 	// If player doesn't have spice to bid higher, must pass
 	if (player->getSpice() <= currentBid) {
@@ -220,7 +227,7 @@ bool BiddingPhase::aiDecideToBid(PhaseContext& ctx, int playerIndex, int current
 
 	// Simple AI: 40% pass rate for basic strategy
 	std::uniform_int_distribution<> dist(1, 100);
-	int roll = dist(ctx.rng);
+	int roll = dist(view.rng);
 
 	if (roll <= 40) {
 		std::cout << "      " << player->getFactionName() << " passes" << std::endl;
@@ -229,7 +236,7 @@ bool BiddingPhase::aiDecideToBid(PhaseContext& ctx, int playerIndex, int current
 
 	// AI raises by 1-5 spice randomly
 	std::uniform_int_distribution<> bidIncrementDist(1, 5);
-	int bidIncrement = bidIncrementDist(ctx.rng);
+	int bidIncrement = bidIncrementDist(view.rng);
 	int bid = currentBid + bidIncrement;
 	
 	// Cap at available spice
