@@ -447,3 +447,16 @@ bool GameMap::canAddFactionToTerritory(const std::string& territoryName, int fac
 
 	return countFactionsInTerritory(territoryName) < 2;
 }
+
+std::vector<std::string> GameMap::getTerritoriesWithUnits(int factionIndex) const {
+	std::vector<std::string> territoriesWithUnits;
+	
+	for (const auto& terr : territories) {
+		int unitCount = getUnitsInTerritory(terr.name, factionIndex);
+		if (unitCount > 0) {
+			territoriesWithUnits.push_back(terr.name);
+		}
+	}
+	
+	return territoriesWithUnits;
+}

@@ -17,42 +17,43 @@ int StormPhase::drawStormCard(std::vector<int>& stormDeck, std::mt19937& rng) {
 
 void StormPhase::moveStorm(int sectorsToMove, int& stormSector) {
 	stormSector += sectorsToMove;
-	while (stormSector > 18) {
-		stormSector -= 18;
+	while (stormSector > TOTAL_SECTORS) {
+		stormSector -= TOTAL_SECTORS;
 	}
 	while (stormSector < 1) {
-		stormSector += 18;
+		stormSector += TOTAL_SECTORS;
 	}
 }
 
 void StormPhase::execute(PhaseContext& ctx) {
 	std::cout << "  STORM Phase" << std::endl;
+	auto view = ctx.getStormView();
 
-	if (ctx.turnNumber == 1) {
+	if (view.turnNumber == 1) {
 		std::uniform_int_distribution<> startSectorDist(1, 18);
-		ctx.stormSector = startSectorDist(ctx.rng);
-		ctx.lastStormCard = 0;
-		ctx.nextStormCard = drawStormCard(ctx.stormDeck, ctx.rng);
-		ctx.hasNextStormCard = true;
+		view.stormSector = startSectorDist(view.rng);
+		view.lastStormCard = 0;
+		view.nextStormCard = drawStormCard(view.stormDeck, view.rng);
+		view.hasNextStormCard = true;
 
-		std::cout << "    First turn setup: storm placed at random sector " << ctx.stormSector << std::endl;
-		std::cout << "    Next storm card prepared: " << ctx.nextStormCard << std::endl;
+		std::cout << "    First turn setup: storm placed at random sector " << view.stormSector << std::endl;
+		std::cout << "    Next storm card prepared: " << view.nextStormCard << std::endl;
 		return;
 	}
 
-	if (!ctx.hasNextStormCard) {
-		ctx.nextStormCard = drawStormCard(ctx.stormDeck, ctx.rng);
-		ctx.hasNextStormCard = true;
+	if (!view.hasNextStormCard) {
+		view.nextStormCard = drawStormCard(view.stormDeck, view.rng);
+		view.hasNextStormCard = true;
 	}
 
-	ctx.lastStormCard = ctx.nextStormCard;
-	ctx.hasNextStormCard = false;
-	moveStorm(ctx.lastStormCard, ctx.stormSector);
+	view.lastStormCard = view.nextStormCard;
+	view.hasNextStormCard = false;
+	moveStorm(view.lastStormCard, view.stormSector);
 
-	ctx.nextStormCard = drawStormCard(ctx.stormDeck, ctx.rng);
-	ctx.hasNextStormCard = true;
+	view.nextStormCard = drawStormCard(view.stormDeck, view.rng);
+	view.hasNextStormCard = true;
 
-	std::cout << "    Storm card resolved: " << ctx.lastStormCard << std::endl;
-	std::cout << "    Storm now at sector " << ctx.stormSector << std::endl;
-	std::cout << "    Next storm card prepared: " << ctx.nextStormCard << std::endl;
+	std::cout << "    Storm card resolved: " << view.lastStormCard << std::endl;
+	std::cout << "    Storm now at sector " << view.stormSector << std::endl;
+	std::cout << "    Next storm card prepared: " << view.nextStormCard << std::endl;
 }

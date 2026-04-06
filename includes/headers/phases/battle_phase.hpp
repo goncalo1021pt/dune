@@ -13,7 +13,7 @@ class BattlePhase : public Phase {
 
 	private:
 		// Main battle resolution for a contested territory
-		void resolveBattle(PhaseContext& ctx, int attackerIdx, territory& battleTerritory);
+		void resolveBattle(PhaseContext& ctx, int attackerIdx, const std::string& territoryName);
 		
 		// Battle resolution for territory with N participants
 		void resolveBattlesInTerritory(PhaseContext& ctx, territory& territory);

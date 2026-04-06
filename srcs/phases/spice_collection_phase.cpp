@@ -7,30 +7,39 @@
 void SpiceCollectionPhase::execute(PhaseContext& ctx) {
 	std::cout << "  SPICE_COLLECTION Phase" << std::endl;
 
+	auto view = ctx.getSpiceCollectionView();
 	// Step 1: Add spice from three special cities
-	addCitySpiceProduction(ctx);
+	addCitySpiceProduction(view);
 
 	// Step 2: Collect spice from territories
-	collectSpiceFromTerritories(ctx);
+	collectSpiceFromTerritories(view);
 }
 
-void SpiceCollectionPhase::addCitySpiceProduction(PhaseContext& ctx) {
-	std::cout << "    City Spice Production:" << std::endl;
+void SpiceCollectionPhase::addCitySpiceProduction(PhaseContext::SpiceCollectionView& view) {
+	std::cout << "    City Tax Collection:" << std::endl;
 	
-	ctx.map.getTerritory("Arrakeen")->spiceAmount += 2;
-	std::cout << "      Arrakeen produces 2 spice" << std::endl;
+	// Cities don't hold spice; instead they provide tax (spice income) to their controller
+	const std::string cities[] = {"Arrakeen", "Carthag", "Tuek's Sietch"};
+	const int cityTaxAmount[] = {2, 2, 1}; // Arrakeen: 2, Carthag: 2, Tuek's Sietch: 1
 	
-	ctx.map.getTerritory("Carthag")->spiceAmount += 2;
-	std::cout << "      Carthag produces 2 spice" << std::endl;
-	
-	ctx.map.getTerritory("Tuek's Sietch")->spiceAmount += 1;
-	std::cout << "      Tuek's Sietch produces 1 spice" << std::endl;
+	for (int i = 0; i < 3; ++i) {
+		territory* city = view.map.getTerritory(cities[i]);
+		if (city != nullptr && !city->unitsPresent.empty()) {
+			// City provides tax to all factions that have units there
+			for (const auto& unitStack : city->unitsPresent) {
+				int tax = cityTaxAmount[i];
+				view.players[unitStack.factionOwner]->addSpice(tax);
+				std::cout << "      " << view.players[unitStack.factionOwner]->getFactionName()
+				          << " collects " << tax << " spice tax from " << cities[i] << std::endl;
+			}
+		}
+	}
 }
 
-void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext& ctx) {
+void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollectionView& view) {
 	std::cout << "    Unit Spice Collection:" << std::endl;
 	
-	for (const auto& territory : ctx.map.getTerritories()) {
+	for (const auto& territory : view.map.getTerritories()) {
 		if (territory.spiceAmount <= 0 || territory.unitsPresent.empty()) {
 			continue;
 		}
@@ -45,14 +54,14 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext& ctx) {
 			int spiceCollected = std::min(totalUnits * 2, territory.spiceAmount);
 			
 			// Add to player
-			ctx.players[unitStack.factionOwner]->addSpice(spiceCollected);
+			view.players[unitStack.factionOwner]->addSpice(spiceCollected);
 			
 			// Remove from territory
-			ctx.map.getTerritory(territory.name)->spiceAmount -= spiceCollected;
+			view.map.getTerritory(territory.name)->spiceAmount -= spiceCollected;
 
-			std::cout << "      " << ctx.players[unitStack.factionOwner]->getFactionName()
+			std::cout << "      " << view.players[unitStack.factionOwner]->getFactionName()
 			          << " collects " << spiceCollected << " spice from " << territory.name
-			          << " (" << ctx.players[unitStack.factionOwner]->getSpice() << " total)" << std::endl;
+			          << " (" << view.players[unitStack.factionOwner]->getSpice() << " total)" << std::endl;
 		}
 	}
 }

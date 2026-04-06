@@ -186,6 +186,16 @@ const std::vector<Leader>& Player::getAliveLeaders() const {
 	return aliveLeaders;
 }
 
+std::vector<Leader>& Player::getAliveLeadersMutable() {
+	return aliveLeaders;
+}
+
+void Player::markLeaderBattled(size_t aliveLeaderIndex) {
+	if (aliveLeaderIndex < aliveLeaders.size()) {
+		aliveLeaders[aliveLeaderIndex].hasBattled = true;
+	}
+}
+
 const std::vector<Leader>& Player::getDeadLeaders() const {
 	return deadLeaders;
 }

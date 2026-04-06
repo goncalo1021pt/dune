@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <array>
+
 namespace GameConstants {
     constexpr int MIN_PLAYERS = 2;
     constexpr int MAX_PLAYERS = 6;
@@ -13,6 +16,26 @@ namespace GameConstants {
     constexpr int STARTING_SPECIAL_UNITS = 0;
 	constexpr int MAX_TREACHERY_CARDS = 4;
 	constexpr int MAX_TRAITOR_CARDS = 4;
+	constexpr int TOKEN_SECTORS[] = {2, 5, 8, 11, 14, 17};
+	constexpr int NUM_TOKEN_SECTORS = 6;
+	
+	// Faction name mapping
+	static constexpr std::array<const char*, 6> FACTION_NAMES = {{
+		"Atreides",
+		"Harkonnen",
+		"Fremen",
+		"Emperor",
+		"Spacing Guild",
+		"Bene Gesserit"
+	}};
+	
+	// Helper to get faction name by index
+	inline std::string getFactionName(int factionIndex) {
+		if (factionIndex >= 0 && factionIndex < (int)FACTION_NAMES.size()) {
+			return FACTION_NAMES[factionIndex];
+		}
+		return "Unknown";
+	}
 }
 
 using namespace GameConstants;
