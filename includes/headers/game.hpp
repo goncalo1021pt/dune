@@ -36,10 +36,10 @@ static constexpr int NUM_PHASES = static_cast<int>(gamePhase::COUNT);
 enum class faction {
 	ATREIDES,
 	HARKONNEN,
-	BENE_GESSERIT,
 	FREMEN,
 	EMPEROR,
-	SPACING_GUILD
+	SPACING_GUILD,
+	BENE_GESSERIT
 };
 
 /**
