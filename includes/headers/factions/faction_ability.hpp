@@ -39,6 +39,9 @@ public:
 	// --- Shipment Phase hooks ---
 	// Cost in spice to ship N units to a given territory (default: 1 city, 2 other)
 	virtual int getShipmentCost(const territory* terr, int unitCount) const;
+	// Get valid territories for this faction to deploy to (Fremen: within 2 of Great Flat)
+	// Returns empty vector to mean unrestricted (all except Polar Sink)
+	virtual std::vector<std::string> getValidDeploymentTerritories(PhaseContext& ctx) const;
 	// Can this faction ship from one on-planet territory to another? (Guild only)
 	virtual bool canCrossShip() const;
 	// Can this faction ship units back to reserves? (Guild only)

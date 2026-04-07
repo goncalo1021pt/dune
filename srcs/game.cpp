@@ -54,7 +54,6 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 		// Initialize faction-specific leaders from CSV data
 		switch (i) {
 			case (int)faction::ATREIDES:
-				players.back()->addLeader(Leader("Paul Muad'Dib", 10)); // Special
 				players.back()->addLeader(Leader("Thufir Hawat", 5));
 				players.back()->addLeader(Leader("Lady Jessica", 5));
 				players.back()->addLeader(Leader("Gurney Halleck", 4));
@@ -62,7 +61,6 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 				players.back()->addLeader(Leader("Dr. Wellington Yueh", 1));
 				break;
 			case (int)faction::HARKONNEN:
-				players.back()->addLeader(Leader("Baron Harkonnen", 10)); // Special
 				players.back()->addLeader(Leader("Feyd-Rautha", 6));
 				players.back()->addLeader(Leader("Beast Rabban", 4));
 				players.back()->addLeader(Leader("Piter de Vries", 3));
@@ -70,7 +68,6 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 				players.back()->addLeader(Leader("Umman Kudu", 1));
 				break;
 			case (int)faction::FREMEN:
-				players.back()->addLeader(Leader("Liet Kynes", 10)); // Special
 				players.back()->addLeader(Leader("Stilgar", 7));
 				players.back()->addLeader(Leader("Chani", 6));
 				players.back()->addLeader(Leader("Otheym", 5));
@@ -78,7 +75,6 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 				players.back()->addLeader(Leader("Jamis", 2));
 				break;
 			case (int)faction::EMPEROR:
-				players.back()->addLeader(Leader("Emperor Shaddam IV", 10)); // Special
 				players.back()->addLeader(Leader("Hasimir Fenring", 6));
 				players.back()->addLeader(Leader("Captain Aramsham", 5));
 				players.back()->addLeader(Leader("Caid", 3));
@@ -86,7 +82,6 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 				players.back()->addLeader(Leader("Bashar", 2));
 				break;
 			case (int)faction::SPACING_GUILD:
-				players.back()->addLeader(Leader("Edric", 10)); // Special
 				players.back()->addLeader(Leader("Staban Tuek", 5));
 				players.back()->addLeader(Leader("Master Bewt", 3));
 				players.back()->addLeader(Leader("Esmar Tuek", 3));
@@ -94,7 +89,6 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 				players.back()->addLeader(Leader("Guild Rep", 1));
 				break;
 			case (int)faction::BENE_GESSERIT:
-				players.back()->addLeader(Leader("Mother Mohiam", 10)); // Special
 				players.back()->addLeader(Leader("Alia", 5));
 				players.back()->addLeader(Leader("Margot Lady Fenring", 5));
 				players.back()->addLeader(Leader("Mother Ramallo", 5));
@@ -111,6 +105,11 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 			case (int)faction::EMPEROR: players.back()->setFactionAbility(std::make_unique<EmperorAbility>()); break;
 			case (int)faction::SPACING_GUILD: players.back()->setFactionAbility(std::make_unique<SpacingGuildAbility>()); break;
 			case (int)faction::BENE_GESSERIT: players.back()->setFactionAbility(std::make_unique<BeneGesseritAbility>()); break;
+		}
+		
+		// Call faction setup for starting spice/units customization
+		if (players.back()->getFactionAbility()) {
+			players.back()->getFactionAbility()->setupAtStart(players.back());
 		}
 	}
 
@@ -194,6 +193,17 @@ void Game::initializeGame() {
 	
 	// Initialize turn order (will be recalculated after each storm phase)
 	setTurnOrder();
+	
+	// Place starting forces for factions with custom deployments
+	PhaseContext tempCtx(turnNumber, currentPhase, players, playerCount, _map,
+		stormSector, lastStormCard, nextStormCard, hasNextStormCard, stormDeck,
+		spiceDeck, treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, 
+		interactiveMode, eventLogger.get());
+	for (int i = 0; i < playerCount; ++i) {
+		if (players[i]->getFactionAbility()) {
+			players[i]->getFactionAbility()->placeStartingForces(tempCtx);
+		}
+	}
 	
 	if (eventLogger) {
 		eventLogger->logDebug("=== Players Initialized ===");

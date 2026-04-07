@@ -20,7 +20,7 @@ bool HarkonnenAbility::keepsAllTraitorCards() const {
 	return true;  // Harkonnen keep ALL traitor cards they draw
 }
 
-void HarkonnenAbility::onCardWonAtAuction(PhaseContext& ctx) override {
+void HarkonnenAbility::onCardWonAtAuction(PhaseContext& ctx) {
 	// Find Harkonnen player
 	int harkonnenIndex = -1;
 	for (size_t i = 0; i < ctx.players.size(); ++i) {
@@ -38,10 +38,6 @@ void HarkonnenAbility::onCardWonAtAuction(PhaseContext& ctx) override {
 	if ((int)harkonnen->getTreacheryCards().size() < getMaxTreacheryCards()) {
 		treacheryCard bonusCard = ctx.treacheryDeck.drawCard();
 		harkonnen->addTreacheryCard(bonusCard.name);
-		
-		if (ctx.logger) {
-			ctx.logger->logDebug("Harkonnen draws bonus card: " + bonusCard.name);
-		}
 	}
 }
 

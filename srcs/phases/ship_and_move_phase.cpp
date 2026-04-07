@@ -115,15 +115,33 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	auto view = ctx.getShipAndMoveView();
 	std::vector<std::string> validTargets;
 	
-	for (const auto& terr : view.map.getTerritories()) {
-		// Skip Polar Sink (cannot deploy there directly)
-		if (terr.terrain == terrainType::northPole) {
-			continue;
+	// Check if faction has deployment restrictions
+	FactionAbility* ability = ctx.getAbility(factionIndex);
+	std::vector<std::string> restrictedTerritories;
+	if (ability) {
+		restrictedTerritories = ability->getValidDeploymentTerritories(ctx);
+	}
+	
+	// If faction has restrictions, only check those territories
+	if (!restrictedTerritories.empty()) {
+		for (const auto& terrName : restrictedTerritories) {
+			const territory* terr = view.map.getTerritory(terrName);
+			if (terr != nullptr && view.map.canAddFactionToTerritory(terrName, factionIndex)) {
+				validTargets.push_back(terrName);
+			}
 		}
-		
-		// Check if faction can add units to this territory
-		if (view.map.canAddFactionToTerritory(terr.name, factionIndex)) {
-			validTargets.push_back(terr.name);
+	} else {
+		// No restrictions: all territories except Polar Sink
+		for (const auto& terr : view.map.getTerritories()) {
+			// Skip Polar Sink (cannot deploy there directly)
+			if (terr.terrain == terrainType::northPole) {
+				continue;
+			}
+			
+			// Check if faction can add units to this territory
+			if (view.map.canAddFactionToTerritory(terr.name, factionIndex)) {
+				validTargets.push_back(terr.name);
+			}
 		}
 	}
 	
@@ -449,7 +467,14 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	}
 	
 	// Deploy up to 3 units, limited by spice and reserve
-	int maxAffordable = player->getSpice() / calculateDeploymentCost(terr, 1, player);
+	int cost = calculateDeploymentCost(terr, 1, player);
+	int maxAffordable;
+	if (cost == 0) {
+		// Free shipping (e.g., Fremen): deploy up to reserve limit
+		maxAffordable = player->getUnitsReserve();
+	} else {
+		maxAffordable = player->getSpice() / cost;
+	}
 	int unitsToDepl = std::min({3, maxAffordable, player->getUnitsReserve()});
 	
 	if (unitsToDepl <= 0) {

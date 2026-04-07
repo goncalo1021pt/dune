@@ -8,7 +8,7 @@ INCLUDES_DIR = includes/headers
 HEADERS = $(wildcard $(INCLUDES_DIR)/*.hpp $(INCLUDES_DIR)/*.h $(INCLUDES_DIR)/**/*.hpp $(INCLUDES_DIR)/**/*.h)
 
 CXX = g++
-CXXFLAGS = -Wall -Wextra -Werror
+CXXFLAGS = -Wall -Wextra -Werror -g3
 
 OBJS_DIR = objs
 OBJS = $(patsubst $(SRCS_DIR)/%.cpp, $(OBJS_DIR)/%.o, $(SRCS))

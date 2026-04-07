@@ -14,6 +14,11 @@ int FactionAbility::getShipmentCost(const territory* terr, int unitCount) const 
 	return unitCount * 2;
 }
 
+std::vector<std::string> FactionAbility::getValidDeploymentTerritories(PhaseContext& /* ctx */) const {
+	// Default: unrestricted except Polar Sink (phase handles this)
+	return {};
+}
+
 bool FactionAbility::canCrossShip() const { return false; }
 bool FactionAbility::canShipToReserves() const { return false; }
 void FactionAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex) { (void)ctx; (void)shippingFactionIndex; }

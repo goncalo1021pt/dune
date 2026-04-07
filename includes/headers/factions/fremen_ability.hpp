@@ -12,6 +12,10 @@ public:
 	// --- Movement Phase hooks ---
 	int getBaseMovementRange() const override;
 
+	// --- Shipment Phase hooks ---
+	int getShipmentCost(const territory* terr, int unitCount) const override;
+	std::vector<std::string> getValidDeploymentTerritories(PhaseContext& ctx) const override;
+
 	// --- Battle Phase hooks ---
 	bool requiresSpiceForFullUnitStrength() const override;
 

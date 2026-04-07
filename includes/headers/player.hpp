@@ -56,7 +56,9 @@ class Player {
 
 		// Resource management
 		void addSpice(int amount);
-		void removeSpice(int amount);	void setSpice(int amount);  // Set spice directly (for initialization)		void deployUnits(int count);
+		void removeSpice(int amount);
+		void setSpice(int amount);  // Set spice directly (for initialization)
+		void deployUnits(int count);
 		void recallUnits(int count);
 		void destroyUnits(int count);
 		void reviveUnits(int count);

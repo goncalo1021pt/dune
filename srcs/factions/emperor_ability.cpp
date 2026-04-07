@@ -23,13 +23,6 @@ void EmperorAbility::onOtherFactionPaidForCard(PhaseContext& ctx, int payingFact
 	
 	// Emperor receives the spice payment
 	ctx.players[emperorIndex]->addSpice(amount);
-	
-	if (ctx.logger) {
-		ctx.logger->logDebug(
-			"Emperor receives " + std::to_string(amount) + " spice from " +
-			ctx.players[payingFactionIndex]->getFactionName() + "'s card purchase"
-		);
-	}
 }
 
 void EmperorAbility::setupAtStart(Player* player) {
