@@ -92,17 +92,20 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	return success;
 }
 
-int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCount) const {
-	if (terr == nullptr || unitCount <= 0) {
+int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCount, Player* player) const {
+	if (terr == nullptr || unitCount <= 0 || player == nullptr) {
 		return 0;
 	}
 	
-	// Cities cost 1 spice per unit
-	if (terr->terrain == terrainType::city) {
-		return unitCount * 1;
+	FactionAbility* ability = player->getFactionAbility();
+	if (ability) {
+		return ability->getShipmentCost(terr, unitCount);
 	}
 	
-	// All other territories cost 2 spice per unit
+	// Default: cities 1 spice/unit, others 2 spice/unit
+	if (terr->terrain == terrainType::city) {
+		return unitCount;
+	}
 	return unitCount * 2;
 }
 
@@ -148,7 +151,7 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	}
 	
 	// Calculate and check cost
-	int cost = calculateDeploymentCost(terr, totalUnits);
+	int cost = calculateDeploymentCost(terr, totalUnits, player);
 	if (player->getSpice() < cost) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Deployment FAILED: Insufficient spice (need " 
@@ -273,15 +276,18 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 int ShipAndMovePhase::calculateMovementRange(PhaseContext& ctx, int factionIndex) const {
 	auto view = ctx.getShipAndMoveView();
 
-	// Check if faction controls Arrakeen or Carthag
+	FactionAbility* ability = ctx.getAbility(factionIndex);
+	int baseRange = (ability) ? ability->getBaseMovementRange() : 1;
+
+	// Check if faction controls Arrakeen or Carthag (ornithopter bonus)
 	bool controlsArrakeen = view.map.isControlled("Arrakeen", factionIndex);
 	bool controlsCarthag = view.map.isControlled("Carthag", factionIndex);
 	
 	if (controlsArrakeen || controlsCarthag) {
-		return 3;  // Special movement
+		return 3;  // Ornithopter bonus overrides base range
 	}
 	
-	return 1;  // Base movement
+	return baseRange;
 }
 
 std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
@@ -443,7 +449,7 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	}
 	
 	// Deploy up to 3 units, limited by spice and reserve
-	int maxAffordable = player->getSpice() / calculateDeploymentCost(terr, 1);
+	int maxAffordable = player->getSpice() / calculateDeploymentCost(terr, 1, player);
 	int unitsToDepl = std::min({3, maxAffordable, player->getUnitsReserve()});
 	
 	if (unitsToDepl <= 0) {
@@ -454,7 +460,7 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	decision.territoryName = targetTerritory;
 	decision.normalUnits = unitsToDepl;
 	decision.eliteUnits = 0;
-	decision.spiceCost = calculateDeploymentCost(terr, unitsToDepl);
+	decision.spiceCost = calculateDeploymentCost(terr, unitsToDepl, player);
 	
 	return decision;
 }

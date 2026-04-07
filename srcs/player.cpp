@@ -30,6 +30,12 @@ void Player::removeSpice(int amount) {
 	spice = std::max(0, spice - amount);
 }
 
+void Player::setSpice(int amount) {
+	if (amount < 0)
+		return;
+	spice = amount;
+}
+
 void Player::deployUnits(int count) {
 	if (count < 0) 
 		return;

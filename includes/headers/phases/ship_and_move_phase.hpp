@@ -39,8 +39,9 @@ private:
 	
 	/**
 	 * Calculate spice cost for deploying units to a territory
+	 * Uses faction ability to determine cost
 	 */
-	int calculateDeploymentCost(const territory* terr, int unitCount) const;
+	int calculateDeploymentCost(const territory* terr, int unitCount, Player* player) const;
 	
 	/**
 	 * Get list of valid territories where player can deploy
