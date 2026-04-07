@@ -132,7 +132,8 @@ void GameMap::linkNeighbours() {
 		"Sietch Tabr", "Rock Outcroppings", 
 		"Hagga Basin", "Tsimpo",
 		"Wind Pass", "Bight of the Cliff",
-		"Funeral Plain", "The Great Flat"
+		"Funeral Plain", "The Great Flat",
+		"Broken Land"
 	});
 	linkTerritoryNeighbours("False Wall West", {
 		"Wind Pass", "Habbanya Erg",
