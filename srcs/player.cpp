@@ -10,6 +10,14 @@ Player::Player(int factionIdx, const std::string& factionName)
 Player::~Player() {
 }
 
+void Player::setFactionAbility(std::unique_ptr<FactionAbility> a) {
+	ability = std::move(a);
+}
+
+FactionAbility* Player::getFactionAbility() const {
+	return ability.get();
+}
+
 void Player::addSpice(int amount) {
 	if (amount < 0) 
 		return;

@@ -10,6 +10,7 @@ class GameMap;
 class TreacheryDeck;
 class SpiceDeck;
 class EventLogger;
+class FactionAbility;
 enum class gamePhase : int;
 
 /**
@@ -187,6 +188,9 @@ struct PhaseContext {
 	MentatPauseView getMentatPauseView() {
 		return MentatPauseView { map, players, turnNumber };
 	}
+
+	// Convenience accessor for faction abilities
+	FactionAbility* getAbility(int playerIndex) const;
 
 	// Constructor: bind all references
 	PhaseContext(

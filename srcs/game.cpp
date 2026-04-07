@@ -11,6 +11,12 @@
 #include "phases/bidding_phase.hpp"
 #include "phases/battle_phase.hpp"
 #include "phases/mentat_pause_phase.hpp"
+#include "factions/atreides_ability.hpp"
+#include "factions/harkonnen_ability.hpp"
+#include "factions/fremen_ability.hpp"
+#include "factions/emperor_ability.hpp"
+#include "factions/spacing_guild_ability.hpp"
+#include "factions/bene_gesserit_ability.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -47,6 +53,16 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 		// Assign all 5 default leaders (power 1-5) to each faction
 		for (int power = 1; power <= 5; ++power) {
 			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
+		}
+		
+		// Assign faction ability
+		switch (i) {
+			case 0: players.back()->setFactionAbility(std::make_unique<AtreidesAbility>()); break;
+			case 1: players.back()->setFactionAbility(std::make_unique<HarkonnenAbility>()); break;
+			case 2: players.back()->setFactionAbility(std::make_unique<FremenAbility>()); break;
+			case 3: players.back()->setFactionAbility(std::make_unique<EmperorAbility>()); break;
+			case 4: players.back()->setFactionAbility(std::make_unique<SpacingGuildAbility>()); break;
+			case 5: players.back()->setFactionAbility(std::make_unique<BeneGesseritAbility>()); break;
 		}
 	}
 
