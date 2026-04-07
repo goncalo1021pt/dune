@@ -10,6 +10,7 @@
 #include "map.hpp"
 #include "player.hpp"
 #include "cards/treachery_deck.hpp"
+#include "cards/traitor_deck.hpp"
 #include "cards/spice_deck.hpp"
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
@@ -93,6 +94,7 @@ class Game {
 		bool beneGesseritCharity;
 
 		TreacheryDeck treacheryDeck;
+		TraitorDeck traitorDeck;
 
 		// Phase handlers (Strategy pattern)
 		std::vector<std::unique_ptr<Phase>> phases;

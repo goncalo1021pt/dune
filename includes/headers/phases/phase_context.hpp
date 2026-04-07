@@ -8,6 +8,7 @@
 class Player;
 class GameMap;
 class TreacheryDeck;
+class TraitorDeck;
 class SpiceDeck;
 class EventLogger;
 class FactionAbility;
@@ -39,6 +40,7 @@ struct PhaseContext {
 
 	// Treachery state
 	TreacheryDeck& treacheryDeck;
+	TraitorDeck& traitorDeck;
 
 	// Turn order
 	std::vector<int>& turnOrder;
@@ -206,6 +208,7 @@ struct PhaseContext {
 		std::vector<int>& stormDeck_,
 		SpiceDeck& spiceDeck_,
 		TreacheryDeck& treacheryDeck_,
+		TraitorDeck& traitorDeck_,
 		std::vector<int>& turnOrder_,
 		bool& beneGesseritCharity_,
 		std::mt19937& rng_,
@@ -219,6 +222,7 @@ struct PhaseContext {
 		  stormDeck(stormDeck_),
 		  spiceDeck(spiceDeck_),
 		  treacheryDeck(treacheryDeck_),
+		  traitorDeck(traitorDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
 		  interactiveMode(interactiveMode_), logger(logger_), gameEnded(false) {}

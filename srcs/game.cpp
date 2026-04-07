@@ -40,7 +40,7 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
-	  treacheryDeck(rng), phases(), interactiveMode(interactive),
+	  treacheryDeck(rng), traitorDeck(rng), phases(), interactiveMode(interactive),
 	  eventLogger(std::make_unique<ConsoleEventLogger>()), gameEnded(false) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
@@ -50,19 +50,67 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive)
 	
 	for (int i = 0; i < playerCount; ++i) {
 		players.push_back(new Player(i, FACTION_NAMES[i]));
-		// Assign all 5 default leaders (power 1-5) to each faction
-		for (int power = 1; power <= 5; ++power) {
-			players.back()->addLeader(Leader::createForFaction(FACTION_NAMES[i], power));
+		
+		// Initialize faction-specific leaders from CSV data
+		switch (i) {
+			case (int)faction::ATREIDES:
+				players.back()->addLeader(Leader("Paul Muad'Dib", 10)); // Special
+				players.back()->addLeader(Leader("Thufir Hawat", 5));
+				players.back()->addLeader(Leader("Lady Jessica", 5));
+				players.back()->addLeader(Leader("Gurney Halleck", 4));
+				players.back()->addLeader(Leader("Duncan Idaho", 2));
+				players.back()->addLeader(Leader("Dr. Wellington Yueh", 1));
+				break;
+			case (int)faction::HARKONNEN:
+				players.back()->addLeader(Leader("Baron Harkonnen", 10)); // Special
+				players.back()->addLeader(Leader("Feyd-Rautha", 6));
+				players.back()->addLeader(Leader("Beast Rabban", 4));
+				players.back()->addLeader(Leader("Piter de Vries", 3));
+				players.back()->addLeader(Leader("Captain Iakin Nefud", 2));
+				players.back()->addLeader(Leader("Umman Kudu", 1));
+				break;
+			case (int)faction::FREMEN:
+				players.back()->addLeader(Leader("Liet Kynes", 10)); // Special
+				players.back()->addLeader(Leader("Stilgar", 7));
+				players.back()->addLeader(Leader("Chani", 6));
+				players.back()->addLeader(Leader("Otheym", 5));
+				players.back()->addLeader(Leader("Shadout Mapes", 3));
+				players.back()->addLeader(Leader("Jamis", 2));
+				break;
+			case (int)faction::EMPEROR:
+				players.back()->addLeader(Leader("Emperor Shaddam IV", 10)); // Special
+				players.back()->addLeader(Leader("Hasimir Fenring", 6));
+				players.back()->addLeader(Leader("Captain Aramsham", 5));
+				players.back()->addLeader(Leader("Caid", 3));
+				players.back()->addLeader(Leader("Burseg", 3));
+				players.back()->addLeader(Leader("Bashar", 2));
+				break;
+			case (int)faction::SPACING_GUILD:
+				players.back()->addLeader(Leader("Edric", 10)); // Special
+				players.back()->addLeader(Leader("Staban Tuek", 5));
+				players.back()->addLeader(Leader("Master Bewt", 3));
+				players.back()->addLeader(Leader("Esmar Tuek", 3));
+				players.back()->addLeader(Leader("Soo-Soo Sook", 2));
+				players.back()->addLeader(Leader("Guild Rep", 1));
+				break;
+			case (int)faction::BENE_GESSERIT:
+				players.back()->addLeader(Leader("Mother Mohiam", 10)); // Special
+				players.back()->addLeader(Leader("Alia", 5));
+				players.back()->addLeader(Leader("Margot Lady Fenring", 5));
+				players.back()->addLeader(Leader("Mother Ramallo", 5));
+				players.back()->addLeader(Leader("Princess Irulan", 5));
+				players.back()->addLeader(Leader("Wanna Yueh", 5));
+				break;
 		}
 		
 		// Assign faction ability
 		switch (i) {
-			case 0: players.back()->setFactionAbility(std::make_unique<AtreidesAbility>()); break;
-			case 1: players.back()->setFactionAbility(std::make_unique<HarkonnenAbility>()); break;
-			case 2: players.back()->setFactionAbility(std::make_unique<FremenAbility>()); break;
-			case 3: players.back()->setFactionAbility(std::make_unique<EmperorAbility>()); break;
-			case 4: players.back()->setFactionAbility(std::make_unique<SpacingGuildAbility>()); break;
-			case 5: players.back()->setFactionAbility(std::make_unique<BeneGesseritAbility>()); break;
+			case (int)faction::ATREIDES: players.back()->setFactionAbility(std::make_unique<AtreidesAbility>()); break;
+			case (int)faction::HARKONNEN: players.back()->setFactionAbility(std::make_unique<HarkonnenAbility>()); break;
+			case (int)faction::FREMEN: players.back()->setFactionAbility(std::make_unique<FremenAbility>()); break;
+			case (int)faction::EMPEROR: players.back()->setFactionAbility(std::make_unique<EmperorAbility>()); break;
+			case (int)faction::SPACING_GUILD: players.back()->setFactionAbility(std::make_unique<SpacingGuildAbility>()); break;
+			case (int)faction::BENE_GESSERIT: players.back()->setFactionAbility(std::make_unique<BeneGesseritAbility>()); break;
 		}
 	}
 
@@ -116,6 +164,7 @@ void Game::initializeGame() {
 	}
 	spiceDeck.initialize(_map);
 	treacheryDeck.initialize();
+	traitorDeck.initialize();
 	if (eventLogger) {
 		eventLogger->logDebug("Treachery deck initialized with " + std::to_string(treacheryDeck.getTotalCards()) + " cards");
 	}
@@ -265,7 +314,7 @@ void Game::processPhase() {
 		turnNumber, currentPhase, players, playerCount, _map,
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, spiceDeck,
-		treacheryDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
+		treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
 		eventLogger.get()
 	);
 
