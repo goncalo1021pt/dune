@@ -229,6 +229,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			e.territory = territoryName;
 			ctx.logger->logEvent(e);
 		}
+		
+		// Trigger faction ability hooks for battle win
+		attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		
 	} else if (attackerValue < defenderValue) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: " + defender->getFactionName() + " wins!");
@@ -246,6 +250,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			e.territory = territoryName;
 			ctx.logger->logEvent(e);
 		}
+		
+		// Trigger faction ability hooks for battle win
+		defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
+		
 	} else {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: Tie! " + attacker->getFactionName() + " wins (attacker advantage).");
@@ -263,6 +271,9 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			e.territory = territoryName;
 			ctx.logger->logEvent(e);
 		}
+		
+		// Trigger faction ability hooks for battle win (attacker wins tie)
+		attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
 	}
 }
 

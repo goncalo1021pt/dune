@@ -29,14 +29,6 @@ namespace GameConstants {
 		"Bene Gesserit"
 	}};
 	
-	// Faction indices
-	constexpr int FACTION_ATREIDES = 0;
-	constexpr int FACTION_HARKONNEN = 1;
-	constexpr int FACTION_FREMEN = 2;
-	constexpr int FACTION_EMPEROR = 3;
-	constexpr int FACTION_SPACING_GUILD = 4;
-	constexpr int FACTION_BENE_GESSERIT = 5;
-	
 	// Helper to get faction name by index
 	inline std::string getFactionName(int factionIndex) {
 		if (factionIndex >= 0 && factionIndex < (int)FACTION_NAMES.size()) {
