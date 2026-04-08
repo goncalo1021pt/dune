@@ -13,3 +13,6 @@ dune
 .DS_Store
 *.swp
 *~
+
+# Logs
+TEST_GAME
