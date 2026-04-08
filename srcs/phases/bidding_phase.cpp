@@ -89,6 +89,13 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 
 		// Award card to winner
 		view.players[winner]->addTreacheryCard(auctionCards[cardIdx].name);
+		
+		// Notify faction about winning a card (Harkonnen draws bonus card here)
+		FactionAbility* winnerAbility = ctx.getAbility(winner);
+		if (winnerAbility) {
+			winnerAbility->onCardWonAtAuction(ctx);
+		}
+		
 		if (ctx.logger) {
 			Event e(EventType::BID_PLACED,
 				view.players[winner]->getFactionName() + " wins \"" + auctionCards[cardIdx].name + "\"",
@@ -174,6 +181,14 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 					int spaceAfter = view.players[highestBidder]->getSpice();
 					winMsg += " - pays " + std::to_string(currentBid) + " spice (" + 
 						std::to_string(spaceBefore) + " -> " + std::to_string(spaceAfter) + ")";
+					
+					// Notify all factions that a payment was made (Emperor hook)
+					for (size_t i = 0; i < ctx.players.size(); ++i) {
+						FactionAbility* ability = ctx.getAbility(i);
+						if (ability) {
+							ability->onOtherFactionPaidForCard(ctx, highestBidder, currentBid);
+						}
+					}
 				}
 				ctx.logger->logDebug(winMsg);
 			}

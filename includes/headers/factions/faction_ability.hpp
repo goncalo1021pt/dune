@@ -89,6 +89,8 @@ public:
 	// Called when this faction's opponent reveals their battle plan.
 	// Atreides prescience intercepts here.
 	virtual void onOpponentBattlePlanRevealed(PhaseContext& ctx, int opponentIndex);
+	// Called after this faction wins a battle (Harkonnen captures leaders here)
+	virtual void onBattleWon(PhaseContext& ctx, int opponentIndex);
 
 	// --- Traitor hooks ---
 	// Does this faction keep ALL traitor cards drawn? (Harkonnen only)
