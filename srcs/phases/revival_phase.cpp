@@ -9,7 +9,6 @@ void RevivalPhase::execute(PhaseContext& ctx) {
 		ctx.logger->logDebug("REVIVAL Phase");
 	}
 	auto view = ctx.getRevivalView();
-	const int maxRevivesPerTurn = 3;
 	const int spiceCostPerPaidRevive = 2;
 
 	for (size_t i = 0; i < view.players.size(); ++i) {
@@ -18,13 +17,16 @@ void RevivalPhase::execute(PhaseContext& ctx) {
 			continue;
 		}
 
-		int freeRevives = view.players[i]->getFreeRevivesPerTurn();
-		int revivedForFree = std::min(std::min(freeRevives, maxRevivesPerTurn), destroyed);
+		FactionAbility* ability = ctx.getAbility(i);
+		int freeRevives = (ability) ? ability->getFreeRevivalsPerTurn() : 1;
+		int revivedForFree = std::min(freeRevives, destroyed);
 
-		int reviveSlotsLeft = maxRevivesPerTurn - revivedForFree;
-		int destroyedAfterFree = destroyed - revivedForFree;
-		int affordablePaidRevives = view.players[i]->getSpice() / spiceCostPerPaidRevive;
-		int revivedPaid = std::min(std::min(reviveSlotsLeft, destroyedAfterFree), affordablePaidRevives);
+		int revivedPaid = 0;
+		if (ability && ability->canBuyAdditionalRevivals()) {
+			int destroyedAfterFree = destroyed - revivedForFree;
+			int affordablePaidRevives = view.players[i]->getSpice() / spiceCostPerPaidRevive;
+			revivedPaid = std::min(destroyedAfterFree, affordablePaidRevives);
+		}
 		int spicePaid = revivedPaid * spiceCostPerPaidRevive;
 		int totalRevived = revivedForFree + revivedPaid;
 

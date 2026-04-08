@@ -24,9 +24,12 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 	
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		int handCount = view.players[i]->getTreacheryCards().size();
-		std::string playerStatus = view.players[i]->getFactionName() + ": " + std::to_string(handCount) + " cards";
+		FactionAbility* ability = ctx.getAbility(i);
+		int maxCards = (ability) ? ability->getMaxTreacheryCards() : 4;
 		
-		if (handCount >= 4) {
+		std::string playerStatus = view.players[i]->getFactionName() + ": " + std::to_string(handCount) + "/" + std::to_string(maxCards) + " cards";
+		
+		if (handCount >= maxCards) {
 			playerStatus += " (MUST PASS)";
 		} else {
 			eligiblePlayers.push_back(i);

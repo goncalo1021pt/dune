@@ -4,7 +4,7 @@
 
 struct Leader {
 	std::string name;
-	int power;          // 1-5
+	int power;          // 1-10
 	bool hasBattled;    // true if leader has already battled this turn
 
 	Leader(const std::string& leaderName = "default_leader_1", int p = 1);

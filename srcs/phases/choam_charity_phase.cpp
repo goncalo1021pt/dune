@@ -10,10 +10,10 @@ void ChoamCharityPhase::execute(PhaseContext& ctx) {
 	auto view = ctx.getChoamCharityView();
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		int currentSpice = view.players[i]->getSpice();
-		bool isBeneGesserit = (view.players[i]->getFactionIndex() == 2);  // Bene Gesserit index
+		FactionAbility* ability = ctx.getAbility(i);
 
 		bool shouldReceiveCharity = (currentSpice <= 1);
-		if (view.beneGesseritCharity && isBeneGesserit) {
+		if (ability && ability->alwaysReceivesCharity()) {
 			shouldReceiveCharity = true;
 		}
 

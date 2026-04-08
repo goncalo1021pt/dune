@@ -2,8 +2,10 @@
 
 #include <vector>
 #include <string>
+#include <memory>
 #include "settings.hpp"
 #include "leader.hpp"
+#include "factions/faction_ability.hpp"
 
 // Forward declarations
 enum class faction;
@@ -30,9 +32,15 @@ class Player {
 		std::vector<std::string> traitorCards;
 		std::vector<std::string> traitorsDiscarded;
 
+		std::unique_ptr<FactionAbility> ability;
+
 	public:
 		Player(int factionIndex, const std::string& factionName);
 		~Player();
+
+		// Faction ability
+		void setFactionAbility(std::unique_ptr<FactionAbility> a);
+		FactionAbility* getFactionAbility() const;
 
 		// Getters
 		int getFactionIndex() const;
@@ -49,6 +57,7 @@ class Player {
 		// Resource management
 		void addSpice(int amount);
 		void removeSpice(int amount);
+		void setSpice(int amount);  // Set spice directly (for initialization)
 		void deployUnits(int count);
 		void recallUnits(int count);
 		void destroyUnits(int count);

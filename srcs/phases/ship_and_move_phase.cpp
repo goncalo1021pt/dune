@@ -92,17 +92,20 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	return success;
 }
 
-int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCount) const {
-	if (terr == nullptr || unitCount <= 0) {
+int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCount, Player* player) const {
+	if (terr == nullptr || unitCount <= 0 || player == nullptr) {
 		return 0;
 	}
 	
-	// Cities cost 1 spice per unit
-	if (terr->terrain == terrainType::city) {
-		return unitCount * 1;
+	FactionAbility* ability = player->getFactionAbility();
+	if (ability) {
+		return ability->getShipmentCost(terr, unitCount);
 	}
 	
-	// All other territories cost 2 spice per unit
+	// Default: cities 1 spice/unit, others 2 spice/unit
+	if (terr->terrain == terrainType::city) {
+		return unitCount;
+	}
 	return unitCount * 2;
 }
 
@@ -112,15 +115,33 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	auto view = ctx.getShipAndMoveView();
 	std::vector<std::string> validTargets;
 	
-	for (const auto& terr : view.map.getTerritories()) {
-		// Skip Polar Sink (cannot deploy there directly)
-		if (terr.terrain == terrainType::northPole) {
-			continue;
+	// Check if faction has deployment restrictions
+	FactionAbility* ability = ctx.getAbility(factionIndex);
+	std::vector<std::string> restrictedTerritories;
+	if (ability) {
+		restrictedTerritories = ability->getValidDeploymentTerritories(ctx);
+	}
+	
+	// If faction has restrictions, only check those territories
+	if (!restrictedTerritories.empty()) {
+		for (const auto& terrName : restrictedTerritories) {
+			const territory* terr = view.map.getTerritory(terrName);
+			if (terr != nullptr && view.map.canAddFactionToTerritory(terrName, factionIndex)) {
+				validTargets.push_back(terrName);
+			}
 		}
-		
-		// Check if faction can add units to this territory
-		if (view.map.canAddFactionToTerritory(terr.name, factionIndex)) {
-			validTargets.push_back(terr.name);
+	} else {
+		// No restrictions: all territories except Polar Sink
+		for (const auto& terr : view.map.getTerritories()) {
+			// Skip Polar Sink (cannot deploy there directly)
+			if (terr.terrain == terrainType::northPole) {
+				continue;
+			}
+			
+			// Check if faction can add units to this territory
+			if (view.map.canAddFactionToTerritory(terr.name, factionIndex)) {
+				validTargets.push_back(terr.name);
+			}
 		}
 	}
 	
@@ -148,7 +169,7 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	}
 	
 	// Calculate and check cost
-	int cost = calculateDeploymentCost(terr, totalUnits);
+	int cost = calculateDeploymentCost(terr, totalUnits, player);
 	if (player->getSpice() < cost) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Deployment FAILED: Insufficient spice (need " 
@@ -273,15 +294,18 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 int ShipAndMovePhase::calculateMovementRange(PhaseContext& ctx, int factionIndex) const {
 	auto view = ctx.getShipAndMoveView();
 
-	// Check if faction controls Arrakeen or Carthag
+	FactionAbility* ability = ctx.getAbility(factionIndex);
+	int baseRange = (ability) ? ability->getBaseMovementRange() : 1;
+
+	// Check if faction controls Arrakeen or Carthag (ornithopter bonus)
 	bool controlsArrakeen = view.map.isControlled("Arrakeen", factionIndex);
 	bool controlsCarthag = view.map.isControlled("Carthag", factionIndex);
 	
 	if (controlsArrakeen || controlsCarthag) {
-		return 3;  // Special movement
+		return 3;  // Ornithopter bonus overrides base range
 	}
 	
-	return 1;  // Base movement
+	return baseRange;
 }
 
 std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
@@ -443,7 +467,14 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	}
 	
 	// Deploy up to 3 units, limited by spice and reserve
-	int maxAffordable = player->getSpice() / calculateDeploymentCost(terr, 1);
+	int cost = calculateDeploymentCost(terr, 1, player);
+	int maxAffordable;
+	if (cost == 0) {
+		// Free shipping (e.g., Fremen): deploy up to reserve limit
+		maxAffordable = player->getUnitsReserve();
+	} else {
+		maxAffordable = player->getSpice() / cost;
+	}
 	int unitsToDepl = std::min({3, maxAffordable, player->getUnitsReserve()});
 	
 	if (unitsToDepl <= 0) {
@@ -454,7 +485,7 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	decision.territoryName = targetTerritory;
 	decision.normalUnits = unitsToDepl;
 	decision.eliteUnits = 0;
-	decision.spiceCost = calculateDeploymentCost(terr, unitsToDepl);
+	decision.spiceCost = calculateDeploymentCost(terr, unitsToDepl, player);
 	
 	return decision;
 }

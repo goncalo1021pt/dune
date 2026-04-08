@@ -10,6 +10,14 @@ Player::Player(int factionIdx, const std::string& factionName)
 Player::~Player() {
 }
 
+void Player::setFactionAbility(std::unique_ptr<FactionAbility> a) {
+	ability = std::move(a);
+}
+
+FactionAbility* Player::getFactionAbility() const {
+	return ability.get();
+}
+
 void Player::addSpice(int amount) {
 	if (amount < 0) 
 		return;
@@ -20,6 +28,12 @@ void Player::removeSpice(int amount) {
 	if (amount < 0) 
 		return;
 	spice = std::max(0, spice - amount);
+}
+
+void Player::setSpice(int amount) {
+	if (amount < 0)
+		return;
+	spice = amount;
 }
 
 void Player::deployUnits(int count) {

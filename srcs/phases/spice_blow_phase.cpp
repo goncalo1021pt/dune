@@ -11,6 +11,19 @@ void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, Ga
 		return;
 	}
 
+	// Check if any faction can ride the worm (Fremen only, currently)
+	bool anyoneRode = false;
+	if (ctxPtr) {
+		for (int i = 0; i < ctxPtr->playerCount; ++i) {
+			if (ctxPtr->players[i]->getFactionAbility()->canRideWorm()) {
+				if (ctxPtr->players[i]->getFactionAbility()->onWormHitsTerritory(*ctxPtr, territoryName)) {
+					anyoneRode = true;
+					break;
+				}
+			}
+		}
+	}
+
 	int totalUnitsKilled = 0;
 	for (const auto& stack : terr->unitsPresent) {
 		totalUnitsKilled += stack.normal_units + stack.elite_units;
@@ -21,14 +34,24 @@ void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, Ga
 	terr->spiceAmount = 0;
 
 	if (ctxPtr && ctxPtr->logger) {
-		Event e(EventType::UNITS_KILLED,
-			"Worm devours: " + std::to_string(totalUnitsKilled) + " units and " + 
-			std::to_string(spiceDestroyed) + " spice removed",
-			ctxPtr->turnNumber, "SPICE_BLOW");
-		e.territory = territoryName;
-		e.unitCount = totalUnitsKilled;
-		e.spiceValue = spiceDestroyed;
-		ctxPtr->logger->logEvent(e);
+		if (anyoneRode) {
+			Event e(EventType::UNITS_KILLED,
+				"Worm at " + territoryName + ": Fremen rode away (no casualties)",
+				ctxPtr->turnNumber, "SPICE_BLOW");
+			e.territory = territoryName;
+			e.unitCount = 0;
+			e.spiceValue = spiceDestroyed;
+			ctxPtr->logger->logEvent(e);
+		} else {
+			Event e(EventType::UNITS_KILLED,
+				"Worm at " + territoryName + ": devours " + std::to_string(totalUnitsKilled) + " units, " + 
+				std::to_string(spiceDestroyed) + " spice destroyed",
+				ctxPtr->turnNumber, "SPICE_BLOW");
+			e.territory = territoryName;
+			e.unitCount = totalUnitsKilled;
+			e.spiceValue = spiceDestroyed;
+			ctxPtr->logger->logEvent(e);
+		}
 	}
 }
 
@@ -75,12 +98,30 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 						if (ctx.logger) {
 							ctx.logger->logDebug("Worm with no effect (invalid territory)");
 						}
-					} else if (targetTerritory->spiceAmount <= 0) {
-						if (ctx.logger) {
-							ctx.logger->logDebug("Worm on " + topDiscardCard.territoryName + " (no spice)");
-						}
 					} else {
+						// Worm resolves REGARDLESS of spice - it kills units even on barren territories
+						if (ctx.logger) {
+							ctx.logger->logDebug("Worm strikes: " + topDiscardCard.territoryName);
+						}
 						resolveWormOnTerritory(topDiscardCard.territoryName, view.map, &ctx);
+						
+						// Draw an additional card after worm resolves
+						spiceCard extraCard = view.spiceDeck.drawCard();
+						if (extraCard.type == spiceCardType::LOCATION) {
+							territory* extraTerr = view.map.getTerritory(extraCard.territoryName);
+							if (extraTerr != nullptr) {
+								extraTerr->spiceAmount += extraCard.spiceAmount;
+								if (ctx.logger) {
+									Event e(EventType::SPICE_BLOWN,
+										"[After Worm] " + std::to_string(extraCard.spiceAmount) + " spice placed at " + extraCard.territoryName,
+										ctx.turnNumber, "SPICE_BLOW");
+									e.territory = extraCard.territoryName;
+									e.spiceValue = extraCard.spiceAmount;
+									ctx.logger->logEvent(e);
+								}
+							}
+						}
+						view.spiceDeck.discardCard(extraCard, discardPileIndex);
 					}
 				}
 			}
@@ -103,7 +144,7 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 		if (ctx.logger) {
 			Event e(EventType::SPICE_BLOWN,
 				"Draw " + std::to_string(blowIndex + 1) + ": " + 
-				std::to_string(card.spiceAmount) + " spice placed",
+				std::to_string(card.spiceAmount) + " spice placed at " + card.territoryName,
 				ctx.turnNumber, "SPICE_BLOW");
 			e.territory = card.territoryName;
 			e.spiceValue = card.spiceAmount;

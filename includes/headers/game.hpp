@@ -10,6 +10,7 @@
 #include "map.hpp"
 #include "player.hpp"
 #include "cards/treachery_deck.hpp"
+#include "cards/traitor_deck.hpp"
 #include "cards/spice_deck.hpp"
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
@@ -35,10 +36,10 @@ static constexpr int NUM_PHASES = static_cast<int>(gamePhase::COUNT);
 enum class faction {
 	ATREIDES,
 	HARKONNEN,
-	BENE_GESSERIT,
 	FREMEN,
 	EMPEROR,
-	SPACING_GUILD
+	SPACING_GUILD,
+	BENE_GESSERIT
 };
 
 /**
@@ -93,6 +94,7 @@ class Game {
 		bool beneGesseritCharity;
 
 		TreacheryDeck treacheryDeck;
+		TraitorDeck traitorDeck;
 
 		// Phase handlers (Strategy pattern)
 		std::vector<std::unique_ptr<Phase>> phases;

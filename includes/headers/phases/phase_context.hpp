@@ -8,8 +8,10 @@
 class Player;
 class GameMap;
 class TreacheryDeck;
+class TraitorDeck;
 class SpiceDeck;
 class EventLogger;
+class FactionAbility;
 enum class gamePhase : int;
 
 /**
@@ -38,6 +40,7 @@ struct PhaseContext {
 
 	// Treachery state
 	TreacheryDeck& treacheryDeck;
+	TraitorDeck& traitorDeck;
 
 	// Turn order
 	std::vector<int>& turnOrder;
@@ -188,6 +191,9 @@ struct PhaseContext {
 		return MentatPauseView { map, players, turnNumber };
 	}
 
+	// Convenience accessor for faction abilities
+	FactionAbility* getAbility(int playerIndex) const;
+
 	// Constructor: bind all references
 	PhaseContext(
 		int& turnNumber_,
@@ -202,6 +208,7 @@ struct PhaseContext {
 		std::vector<int>& stormDeck_,
 		SpiceDeck& spiceDeck_,
 		TreacheryDeck& treacheryDeck_,
+		TraitorDeck& traitorDeck_,
 		std::vector<int>& turnOrder_,
 		bool& beneGesseritCharity_,
 		std::mt19937& rng_,
@@ -215,6 +222,7 @@ struct PhaseContext {
 		  stormDeck(stormDeck_),
 		  spiceDeck(spiceDeck_),
 		  treacheryDeck(treacheryDeck_),
+		  traitorDeck(traitorDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
 		  interactiveMode(interactiveMode_), logger(logger_), gameEnded(false) {}
