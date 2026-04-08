@@ -19,21 +19,16 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 		ctx.logger->logDebug("SHIP_AND_MOVE Phase");
 	}
 
-	// Get view for this phase
 	auto view = ctx.getShipAndMoveView();
 	
-	// Each player takes their turn in order (using turn order from storm calculation)
 	for (size_t i = 0; i < view.turnOrder.size(); ++i) {
 		int playerIndex = view.turnOrder[i];
-		Player* player = view.players[playerIndex];
+		Player* player  = view.players[playerIndex];
 		if (ctx.logger) {
 			ctx.logger->logDebug("--- " + player->getFactionName() + "'s Turn ---");
 		}
 		
-		// 1. Shipment (deployment)
 		bool didShipment = executePlayerShipment(ctx, player);
-		
-		// 2. Movement
 		bool didMovement = executePlayerMovement(ctx, player);
 		
 		if (!didShipment && !didMovement) {
@@ -45,67 +40,55 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 }
 
 // ============================================================================
-// SHIPMENT (DEPLOYMENT) METHODS
+// SHIPMENT (DEPLOYMENT)
 // ============================================================================
 
 bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) {
 	auto view = ctx.getShipAndMoveView();
 
-	// Check if player has units to deploy
 	if (player->getUnitsReserve() <= 0) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("Shipment: No units in reserve to deploy");
-		}
+		if (ctx.logger) ctx.logger->logDebug("Shipment: No units in reserve");
 		return false;
 	}
 	
-	// Get valid deployment targets
 	std::vector<std::string> validTargets = getValidDeploymentTargets(ctx, player->getFactionIndex());
 	
-	// Get deployment decision (interactive or AI)
 	DeploymentDecision decision;
 	
 	if (view.interactiveMode) {
-		// Interactive mode: get player choice
-		auto interactiveChoice = InteractiveInput::getDeploymentDecision(ctx, player, validTargets);
-		decision.territoryName = interactiveChoice.territoryName;
-		decision.normalUnits = interactiveChoice.normalUnits;
-		decision.eliteUnits = interactiveChoice.eliteUnits;
-		decision.shouldDeploy = interactiveChoice.shouldDeploy;
-		decision.spiceCost = 0; // Will be calculated in deployUnits
+		auto choice = InteractiveInput::getDeploymentDecision(ctx, player, validTargets);
+		decision.territoryName = choice.territoryName;
+		decision.normalUnits   = choice.normalUnits;
+		decision.eliteUnits    = choice.eliteUnits;
+		decision.shouldDeploy  = choice.shouldDeploy;
+		decision.sector        = choice.sector;  // Use player's sector choice
+		decision.spiceCost     = 0;
 	} else {
-		// AI mode: use AI decision
 		decision = aiDecideDeployment(ctx, player);
 	}
 	
 	if (!decision.shouldDeploy) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("Shipment: Skipped");
-		}
+		if (ctx.logger) ctx.logger->logDebug("Shipment: Skipped");
 		return false;
 	}
+
+	// Resolve sector if not set (AI mode or invalid choice)
+	if (decision.sector == -1) {
+		const territory* dest = view.map.getTerritory(decision.territoryName);
+		decision.sector = GameMap::firstSafeSector(dest, ctx.stormSector);
+	}
 	
-	// Execute deployment
-	bool success = deployUnits(ctx, player, decision.territoryName, 
-	                          decision.normalUnits, decision.eliteUnits);
-	
-	return success;
+	return deployUnits(ctx, player, decision.territoryName,
+	                   decision.normalUnits, decision.eliteUnits, decision.sector);
 }
 
 int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCount, Player* player) const {
-	if (terr == nullptr || unitCount <= 0 || player == nullptr) {
-		return 0;
-	}
+	if (terr == nullptr || unitCount <= 0 || player == nullptr) return 0;
 	
 	FactionAbility* ability = player->getFactionAbility();
-	if (ability) {
-		return ability->getShipmentCost(terr, unitCount);
-	}
+	if (ability) return ability->getShipmentCost(terr, unitCount);
 	
-	// Default: cities 1 spice/unit, others 2 spice/unit
-	if (terr->terrain == terrainType::city) {
-		return unitCount;
-	}
+	if (terr->terrain == terrainType::city) return unitCount;
 	return unitCount * 2;
 }
 
@@ -115,33 +98,25 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	auto view = ctx.getShipAndMoveView();
 	std::vector<std::string> validTargets;
 	
-	// Check if faction has deployment restrictions
 	FactionAbility* ability = ctx.getAbility(factionIndex);
-	std::vector<std::string> restrictedTerritories;
-	if (ability) {
-		restrictedTerritories = ability->getValidDeploymentTerritories(ctx);
-	}
+	std::vector<std::string> restricted;
+	if (ability) restricted = ability->getValidDeploymentTerritories(ctx);
 	
-	// If faction has restrictions, only check those territories
-	if (!restrictedTerritories.empty()) {
-		for (const auto& terrName : restrictedTerritories) {
-			const territory* terr = view.map.getTerritory(terrName);
-			if (terr != nullptr && view.map.canAddFactionToTerritory(terrName, factionIndex)) {
-				validTargets.push_back(terrName);
-			}
+	auto isValid = [&](const territory& terr) -> bool {
+		if (terr.terrain == terrainType::northPole) return false;
+		// Cannot ship into a sector that is fully in storm.
+		if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) return false;
+		return view.map.canAddFactionToTerritory(terr.name, factionIndex);
+	};
+
+	if (!restricted.empty()) {
+		for (const auto& name : restricted) {
+			const territory* terr = view.map.getTerritory(name);
+			if (terr && isValid(*terr)) validTargets.push_back(name);
 		}
 	} else {
-		// No restrictions: all territories except Polar Sink
 		for (const auto& terr : view.map.getTerritories()) {
-			// Skip Polar Sink (cannot deploy there directly)
-			if (terr.terrain == terrainType::northPole) {
-				continue;
-			}
-			
-			// Check if faction can add units to this territory
-			if (view.map.canAddFactionToTerritory(terr.name, factionIndex)) {
-				validTargets.push_back(terr.name);
-			}
+			if (isValid(terr)) validTargets.push_back(terr.name);
 		}
 	}
 	
@@ -149,64 +124,65 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 }
 
 bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
-                                   const std::string& territoryName, 
-                                   int normalUnits, int eliteUnits) {
+                                    const std::string& territoryName,
+                                    int normalUnits, int eliteUnits, int sector) {
 	auto view = ctx.getShipAndMoveView();
 
 	int totalUnits = normalUnits + eliteUnits;
 	
-	// Validation
 	if (!isValidDeployment(ctx, player->getFactionIndex(), territoryName, totalUnits)) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("Deployment FAILED: Invalid deployment");
-		}
+		if (ctx.logger) ctx.logger->logDebug("Deployment FAILED: Invalid deployment");
 		return false;
 	}
 	
 	territory* terr = view.map.getTerritory(territoryName);
-	if (terr == nullptr) {
+	if (terr == nullptr) return false;
+	
+	// Resolve sector if not set.
+	int effectiveSector = sector;
+	if (effectiveSector == -1) {
+		effectiveSector = GameMap::firstSafeSector(terr, ctx.stormSector);
+	}
+	if (effectiveSector == -1) {
+		if (ctx.logger) ctx.logger->logDebug("Deployment FAILED: No safe sector available");
 		return false;
 	}
-	
-	// Calculate and check cost
+
 	int cost = calculateDeploymentCost(terr, totalUnits, player);
 	if (player->getSpice() < cost) {
 		if (ctx.logger) {
-			ctx.logger->logDebug("Deployment FAILED: Insufficient spice (need " 
-		          + std::to_string(cost) + ", have " + std::to_string(player->getSpice()) + ")");
+			ctx.logger->logDebug("Deployment FAILED: Need " + std::to_string(cost) +
+				" spice, have " + std::to_string(player->getSpice()));
 		}
 		return false;
 	}
 	
-	// Check if player has enough units in reserve
 	if (player->getUnitsReserve() < totalUnits) {
 		if (ctx.logger) {
-			ctx.logger->logDebug("Deployment FAILED: Insufficient units in reserve (need " 
-		          + std::to_string(totalUnits) + ", have " + std::to_string(player->getUnitsReserve()) + ")");
+			ctx.logger->logDebug("Deployment FAILED: Need " + std::to_string(totalUnits) +
+				" units in reserve, have " + std::to_string(player->getUnitsReserve()));
 		}
 		return false;
 	}
 	
-	// Execute deployment
 	player->removeSpice(cost);
 	player->deployUnits(totalUnits);
-	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(), 
-	                            normalUnits, eliteUnits);
+	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(),
+	                              normalUnits, eliteUnits, effectiveSector);
 	
 	if (ctx.logger) {
-		ctx.logger->logDebug("Shipment: Deployed " + std::to_string(totalUnits) + " units to " 
-		          + territoryName + " for " + std::to_string(cost) + " spice");
-		ctx.logger->logDebug("(" + player->getFactionName() + " now has " 
-		          + std::to_string(player->getSpice()) + " spice, " 
-		          + std::to_string(player->getUnitsReserve()) + " units in reserve)");
-		
-		Event e(EventType::UNITS_MOVED,
+		ctx.logger->logDebug("Shipment: " + std::to_string(totalUnits) +
+			" units → " + territoryName +
+			" (sector " + std::to_string(effectiveSector) + ")" +
+			" for " + std::to_string(cost) + " spice");
+
+		Event e(EventType::UNITS_SHIPPED,
 			"Deployed " + std::to_string(totalUnits) + " units to " + territoryName,
 			ctx.turnNumber, "SHIP_AND_MOVE");
 		e.playerFaction = player->getFactionName();
-		e.territory = territoryName;
-		e.unitCount = totalUnits;
-		e.spiceValue = cost;
+		e.territory     = territoryName;
+		e.unitCount     = totalUnits;
+		e.spiceValue    = cost;
 		ctx.logger->logEvent(e);
 	}
 	
@@ -214,30 +190,22 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 }
 
 bool ShipAndMovePhase::isValidDeployment(PhaseContext& ctx, int factionIndex,
-                                         const std::string& territoryName, 
-                                         int unitCount) const {
+                                          const std::string& territoryName,
+                                          int unitCount) const {
 	auto view = ctx.getShipAndMoveView();
 
-	if (unitCount <= 0) {
-		return false;
-	}
+	if (unitCount <= 0) return false;
 	
 	territory* terr = view.map.getTerritory(territoryName);
-	if (terr == nullptr) {
-		return false;
-	}
+	if (terr == nullptr) return false;
+	if (terr->terrain == terrainType::northPole) return false;
+	if (!GameMap::canEnterTerritory(terr, ctx.stormSector)) return false;
 	
-	// Cannot deploy directly to Polar Sink
-	if (terr->terrain == terrainType::northPole) {
-		return false;
-	}
-	
-	// Check territory occupancy rules
 	return view.map.canAddFactionToTerritory(territoryName, factionIndex);
 }
 
 // ============================================================================
-// MOVEMENT METHODS
+// MOVEMENT
 // ============================================================================
 
 bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) {
@@ -245,86 +213,107 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 
 	int movementRange = calculateMovementRange(ctx, player->getFactionIndex());
 	
-	// Get territories where player has units
-	std::vector<std::string> territoriesWithUnits = view.map.getTerritoriesWithUnits(player->getFactionIndex());
+	std::vector<std::string> territoriesWithUnits =
+		view.map.getTerritoriesWithUnits(player->getFactionIndex());
 	
 	if (territoriesWithUnits.empty()) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("Movement: No units on map to move");
-		}
+		if (ctx.logger) ctx.logger->logDebug("Movement: No units on map");
 		return false;
 	}
 	
 	if (ctx.logger) {
-		ctx.logger->logDebug("Movement range: " + std::to_string(movementRange) 
-		          + (movementRange == 3 ? " (special movement)" : ""));
+		ctx.logger->logDebug("Movement range: " + std::to_string(movementRange) +
+			(movementRange == 3 ? " (ornithopter)" : ""));
 	}
 	
-	// Get movement decision (interactive or AI)
 	MovementDecision decision;
 	
 	if (view.interactiveMode) {
-		// Interactive mode: get player choice
-		auto interactiveChoice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
-		decision.fromTerritory = interactiveChoice.fromTerritory;
-		decision.toTerritory = interactiveChoice.toTerritory;
-		decision.normalUnits = interactiveChoice.normalUnits;
-		decision.eliteUnits = interactiveChoice.eliteUnits;
-		decision.shouldMove = interactiveChoice.shouldMove;
+		auto choice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
+		decision.fromTerritory = choice.fromTerritory;
+		decision.toTerritory   = choice.toTerritory;
+		decision.normalUnits   = choice.normalUnits;
+		decision.eliteUnits    = choice.eliteUnits;
+		decision.shouldMove    = choice.shouldMove;
+		decision.fromSector    = choice.fromSector;  // Use player's sector choice
+		decision.toSector      = choice.toSector;    // Use player's sector choice
 	} else {
-		// AI mode: use AI decision
 		decision = aiDecideMovement(ctx, player, movementRange);
 	}
 	
 	if (!decision.shouldMove) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("Movement: Skipped");
+		if (ctx.logger) ctx.logger->logDebug("Movement: Skipped");
+		return false;
+	}
+
+	// Resolve sectors if not set by AI/interactive.
+	if (decision.fromSector == -1) {
+		// Pick any sector of the source that is not in storm.
+		const territory* src = view.map.getTerritory(decision.fromTerritory);
+		if (src) {
+			for (int s : src->sectors) {
+				if (GameMap::canLeaveSector(s, ctx.stormSector) &&
+				    view.map.getUnitsInTerritorySector(decision.fromTerritory,
+				                                        player->getFactionIndex(), s) > 0) {
+					decision.fromSector = s;
+					break;
+				}
+			}
 		}
+	}
+	if (decision.toSector == -1) {
+		const territory* dest = view.map.getTerritory(decision.toTerritory);
+		decision.toSector = GameMap::firstSafeSector(dest, ctx.stormSector);
+	}
+
+	if (decision.fromSector == -1 || decision.toSector == -1) {
+		if (ctx.logger) ctx.logger->logDebug("Movement FAILED: Could not resolve sectors");
 		return false;
 	}
 	
-	// Execute movement
-	bool success = moveUnits(ctx, player->getFactionIndex(),
-	                        decision.fromTerritory, decision.toTerritory,
-	                        decision.normalUnits, decision.eliteUnits);
-	
-	return success;
+	return moveUnits(ctx, player->getFactionIndex(),
+	                 decision.fromTerritory, decision.fromSector,
+	                 decision.toTerritory,   decision.toSector,
+	                 decision.normalUnits,   decision.eliteUnits);
 }
 
 int ShipAndMovePhase::calculateMovementRange(PhaseContext& ctx, int factionIndex) const {
 	auto view = ctx.getShipAndMoveView();
 
 	FactionAbility* ability = ctx.getAbility(factionIndex);
-	int baseRange = (ability) ? ability->getBaseMovementRange() : 1;
+	int baseRange = ability ? ability->getBaseMovementRange() : 1;
 
-	// Check if faction controls Arrakeen or Carthag (ornithopter bonus)
 	bool controlsArrakeen = view.map.isControlled("Arrakeen", factionIndex);
-	bool controlsCarthag = view.map.isControlled("Carthag", factionIndex);
+	bool controlsCarthag  = view.map.isControlled("Carthag",  factionIndex);
 	
-	if (controlsArrakeen || controlsCarthag) {
-		return 3;  // Ornithopter bonus overrides base range
-	}
-	
-	return baseRange;
+	return (controlsArrakeen || controlsCarthag) ? 3 : baseRange;
 }
 
 std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
 	PhaseContext& ctx,
 	const std::string& sourceTerritoryName,
+	int sourceUnitSector,
 	int movementRange,
 	int factionIndex) const {
 	
 	auto view = ctx.getShipAndMoveView();
-
 	std::vector<std::string> reachable;
 	
-	const territory* source = view.map.getTerritory(sourceTerritoryName);
-	if (source == nullptr) {
+	// Units cannot leave if their sector is in storm.
+	if (!GameMap::canLeaveSector(sourceUnitSector, ctx.stormSector)) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement blocked: units in sector " +
+				std::to_string(sourceUnitSector) + " cannot leave (storm)");
+		}
 		return reachable;
 	}
+
+	const territory* source = view.map.getTerritory(sourceTerritoryName);
+	if (source == nullptr) return reachable;
 	
-	// BFS to find all territories within movement range
-	std::queue<std::pair<const territory*, int>> queue;  // {territory, distance}
+	// BFS: visit territories within movementRange steps.
+	// An adjacent territory is passable only if canEnterTerritory() is true.
+	std::queue<std::pair<const territory*, int>> queue;
 	std::set<std::string> visited;
 	
 	queue.push({source, 0});
@@ -334,22 +323,24 @@ std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
 		auto [currentTerr, distance] = queue.front();
 		queue.pop();
 		
-		// Add to reachable list (excluding source)
-		if (distance > 0 && view.map.canAddFactionToTerritory(currentTerr->name, factionIndex)) {
+		if (distance > 0 &&
+		    GameMap::canEnterTerritory(currentTerr, ctx.stormSector) &&
+		    view.map.canAddFactionToTerritory(currentTerr->name, factionIndex)) {
 			reachable.push_back(currentTerr->name);
 		}
 		
-		// Don't explore beyond movement range
-		if (distance >= movementRange) {
-			continue;
-		}
+		if (distance >= movementRange) continue;
 		
-		// Explore neighbors
 		for (const territory* neighbor : currentTerr->neighbourPtrs) {
-			if (visited.find(neighbor->name) == visited.end()) {
+			if (visited.count(neighbor->name)) continue;
+			// Cannot pass through a territory that is entirely in storm.
+			// (Units can move through it only if it has a safe sector to traverse.)
+			if (!GameMap::canEnterTerritory(neighbor, ctx.stormSector)) {
 				visited.insert(neighbor->name);
-				queue.push({neighbor, distance + 1});
+				continue;  // Blocked — do not explore through this territory.
 			}
+			visited.insert(neighbor->name);
+			queue.push({neighbor, distance + 1});
 		}
 	}
 	
@@ -357,71 +348,74 @@ std::vector<std::string> ShipAndMovePhase::getReachableTerritories(
 }
 
 bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
-                                 const std::string& fromTerritory,
-                                 const std::string& toTerritory,
-                                 int normalUnits, int eliteUnits) {
+                                  const std::string& fromTerritory, int fromSector,
+                                  const std::string& toTerritory,   int toSector,
+                                  int normalUnits, int eliteUnits) {
 	auto view = ctx.getShipAndMoveView();
 
 	int totalUnits = normalUnits + eliteUnits;
 	
-	// Get movement range for validation
+	// Check units are available in the specific source sector.
+	int unitsInSector = view.map.getUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	if (unitsInSector < totalUnits) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement FAILED: Need " + std::to_string(totalUnits) +
+				" in sector " + std::to_string(fromSector) + " of " + fromTerritory +
+				", have " + std::to_string(unitsInSector));
+		}
+		return false;
+	}
+
+	// Validate reachability using the source sector.
 	int movementRange = calculateMovementRange(ctx, factionIndex);
+	std::vector<std::string> reachable = getReachableTerritories(
+		ctx, fromTerritory, fromSector, movementRange, factionIndex);
 	
-	// Validation
-	if (!isValidMovement(ctx, factionIndex, fromTerritory, toTerritory, movementRange)) {
+	if (std::find(reachable.begin(), reachable.end(), toTerritory) == reachable.end()) {
 		if (ctx.logger) {
-			ctx.logger->logDebug("Movement FAILED: Invalid movement");
+			ctx.logger->logDebug("Movement FAILED: " + toTerritory +
+				" not reachable from sector " + std::to_string(fromSector) +
+				" of " + fromTerritory);
 		}
 		return false;
 	}
 	
-	// Check if player has enough units in source territory
-	int unitsInSource = view.map.getUnitsInTerritory(fromTerritory, factionIndex);
-	if (unitsInSource < totalUnits) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("Movement FAILED: Not enough units in " + fromTerritory
-		          + " (need " + std::to_string(totalUnits) + ", have " + std::to_string(unitsInSource) + ")");
-		}
-		return false;
-	}
-	
-	// Execute movement
-	view.map.removeUnitsFromTerritory(fromTerritory, factionIndex, normalUnits, eliteUnits);
-	view.map.addUnitsToTerritory(toTerritory, factionIndex, normalUnits, eliteUnits);
+	// Remove from source sector, add to destination sector.
+	view.map.removeUnitsFromTerritorySector(fromTerritory, factionIndex,
+	                                         normalUnits, eliteUnits, fromSector);
+	view.map.addUnitsToTerritory(toTerritory, factionIndex,
+	                              normalUnits, eliteUnits, toSector);
 	
 	if (ctx.logger) {
-		ctx.logger->logDebug("Movement: Moved " + std::to_string(totalUnits) + " units from " 
-		          + fromTerritory + " to " + toTerritory);
+		ctx.logger->logDebug("Moved " + std::to_string(totalUnits) +
+			" units: " + fromTerritory + "(s" + std::to_string(fromSector) + ")" +
+			" → " + toTerritory + "(s" + std::to_string(toSector) + ")");
 		
 		Event e(EventType::UNITS_MOVED,
-			"Moved " + std::to_string(totalUnits) + " units from " + fromTerritory + " to " + toTerritory,
+			"Moved " + std::to_string(totalUnits) +
+			" units from " + fromTerritory + " to " + toTerritory,
 			ctx.turnNumber, "SHIP_AND_MOVE");
 		e.playerFaction = view.players[factionIndex]->getFactionName();
-		e.territory = toTerritory;
-		e.unitCount = totalUnits;
+		e.territory     = toTerritory;
+		e.unitCount     = totalUnits;
 		ctx.logger->logEvent(e);
 	}
 	
 	return true;
 }
 
-
-
 bool ShipAndMovePhase::isValidMovement(PhaseContext& ctx, int factionIndex,
-                                       const std::string& fromTerritory,
-                                       const std::string& toTerritory,
-                                       int movementRange) const {
-	
-	// Get reachable territories from source
+                                        const std::string& fromTerritory,
+                                        int fromSector,
+                                        const std::string& toTerritory,
+                                        int movementRange) const {
 	std::vector<std::string> reachable = getReachableTerritories(
-		ctx, fromTerritory, movementRange, factionIndex);
-	
-	// Check if destination is reachable
+		ctx, fromTerritory, fromSector, movementRange, factionIndex);
 	return std::find(reachable.begin(), reachable.end(), toTerritory) != reachable.end();
 }
 
 // ============================================================================
-// AI DECISION METHODS (Simple AI for now)
+// AI DECISIONS
 // ============================================================================
 
 ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
@@ -431,61 +425,46 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 
 	DeploymentDecision decision;
 	decision.shouldDeploy = false;
-	decision.normalUnits = 0;
-	decision.eliteUnits = 0;
-	decision.spiceCost = 0;
+	decision.normalUnits  = 0;
+	decision.eliteUnits   = 0;
+	decision.sector       = -1;
+	decision.spiceCost    = 0;
 	
-	// Simple AI: Don't deploy if we have less than 4 spice (save for emergencies)
-	if (player->getSpice() < 4 || player->getUnitsReserve() <= 0) {
-		return decision;
-	}
+	if (player->getSpice() < 4 || player->getUnitsReserve() <= 0) return decision;
 	
-	// Get valid deployment targets
-	std::vector<std::string> validTargets = getValidDeploymentTargets(ctx, player->getFactionIndex());
+	std::vector<std::string> validTargets =
+		getValidDeploymentTargets(ctx, player->getFactionIndex());
+	if (validTargets.empty()) return decision;
 	
-	if (validTargets.empty()) {
-		return decision;
-	}
-	
-	// Simple AI: Deploy to first city if possible (cheapest), otherwise first valid territory
+	// Prefer cities (cheapest), otherwise first valid territory.
 	std::string targetTerritory;
-	for (const auto& terrName : validTargets) {
-		const territory* terr = view.map.getTerritory(terrName);
-		if (terr != nullptr && terr->terrain == terrainType::city) {
-			targetTerritory = terrName;
+	for (const auto& name : validTargets) {
+		const territory* terr = view.map.getTerritory(name);
+		if (terr && terr->terrain == terrainType::city) {
+			targetTerritory = name;
 			break;
 		}
 	}
-	
-	if (targetTerritory.empty()) {
-		targetTerritory = validTargets[0];
-	}
+	if (targetTerritory.empty()) targetTerritory = validTargets[0];
 	
 	const territory* terr = view.map.getTerritory(targetTerritory);
-	if (terr == nullptr) {
-		return decision;
-	}
+	if (terr == nullptr) return decision;
+
+	int safeSector = GameMap::firstSafeSector(terr, ctx.stormSector);
+	if (safeSector == -1) return decision;  // territory fully in storm
 	
-	// Deploy up to 3 units, limited by spice and reserve
 	int cost = calculateDeploymentCost(terr, 1, player);
-	int maxAffordable;
-	if (cost == 0) {
-		// Free shipping (e.g., Fremen): deploy up to reserve limit
-		maxAffordable = player->getUnitsReserve();
-	} else {
-		maxAffordable = player->getSpice() / cost;
-	}
-	int unitsToDepl = std::min({3, maxAffordable, player->getUnitsReserve()});
+	int maxAffordable = (cost == 0) ? player->getUnitsReserve()
+	                                 : player->getSpice() / cost;
+	int unitsToDeploy = std::min({3, maxAffordable, player->getUnitsReserve()});
+	if (unitsToDeploy <= 0) return decision;
 	
-	if (unitsToDepl <= 0) {
-		return decision;
-	}
-	
-	decision.shouldDeploy = true;
-	decision.territoryName = targetTerritory;
-	decision.normalUnits = unitsToDepl;
-	decision.eliteUnits = 0;
-	decision.spiceCost = calculateDeploymentCost(terr, unitsToDepl, player);
+	decision.shouldDeploy   = true;
+	decision.territoryName  = targetTerritory;
+	decision.normalUnits    = unitsToDeploy;
+	decision.eliteUnits     = 0;
+	decision.sector         = safeSector;
+	decision.spiceCost      = calculateDeploymentCost(terr, unitsToDeploy, player);
 	
 	return decision;
 }
@@ -496,65 +475,72 @@ ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 	auto view = ctx.getShipAndMoveView();
 
 	MovementDecision decision;
-	decision.shouldMove = false;
+	decision.shouldMove  = false;
 	decision.normalUnits = 0;
-	decision.eliteUnits = 0;
+	decision.eliteUnits  = 0;
+	decision.fromSector  = -1;
+	decision.toSector    = -1;
 	
-	// Get territories with units
-	std::vector<std::string> territoriesWithUnits = view.map.getTerritoriesWithUnits(player->getFactionIndex());
+	std::vector<std::string> territoriesWithUnits =
+		view.map.getTerritoriesWithUnits(player->getFactionIndex());
+	if (territoriesWithUnits.empty()) return decision;
 	
-	if (territoriesWithUnits.empty()) {
-		return decision;
-	}
-	
-	// Simple AI: Move units from first territory with units toward spice-rich territories
-	std::string sourceTerritory = territoriesWithUnits[0];
-	
-	// Get reachable territories
-	std::vector<std::string> reachable = getReachableTerritories(
-		ctx, sourceTerritory, movementRange, player->getFactionIndex());
-	
-	if (reachable.empty()) {
-		return decision;
-	}
-	
-	// Find territory with most spice
-	std::string bestTarget;
-	int bestSpice = -1;
-	
-	for (const auto& terrName : reachable) {
-		const territory* terr = view.map.getTerritory(terrName);
-		if (terr != nullptr && terr->spiceAmount > bestSpice) {
-			bestSpice = terr->spiceAmount;
-			bestTarget = terrName;
-		}
-	}
-	
-	// If no spice found, move to first reachable city
-	if (bestTarget.empty()) {
-		for (const auto& terrName : reachable) {
-			const territory* terr = view.map.getTerritory(terrName);
-			if (terr != nullptr && terr->terrain == terrainType::city) {
-				bestTarget = terrName;
+	// Try each source territory until we find one with a movable stack.
+	for (const auto& sourceName : territoriesWithUnits) {
+		const territory* src = view.map.getTerritory(sourceName);
+		if (!src) continue;
+
+		// Find a sector in this territory that has units and can leave.
+		int movableSector = -1;
+		int unitsToMove   = 0;
+		for (const auto& stack : src->unitsPresent) {
+			if (stack.factionOwner != player->getFactionIndex()) continue;
+			if (!GameMap::canLeaveSector(stack.sector, ctx.stormSector)) continue;
+			int count = stack.normal_units + stack.elite_units;
+			if (count > 0) {
+				movableSector = stack.sector;
+				unitsToMove   = std::max(1, count / 2);
 				break;
 			}
 		}
+		if (movableSector == -1) continue;
+
+		std::vector<std::string> reachable =
+			getReachableTerritories(ctx, sourceName, movableSector, movementRange,
+			                        player->getFactionIndex());
+		if (reachable.empty()) continue;
+
+		// Prefer spice-rich territory, then city, then first reachable.
+		std::string best;
+		int bestSpice = -1;
+		for (const auto& name : reachable) {
+			const territory* t = view.map.getTerritory(name);
+			if (t && t->spiceAmount > bestSpice) {
+				bestSpice = t->spiceAmount;
+				best = name;
+			}
+		}
+		if (best.empty()) {
+			for (const auto& name : reachable) {
+				const territory* t = view.map.getTerritory(name);
+				if (t && t->terrain == terrainType::city) { best = name; break; }
+			}
+		}
+		if (best.empty()) best = reachable[0];
+
+		const territory* dest = view.map.getTerritory(best);
+		int toSector = GameMap::firstSafeSector(dest, ctx.stormSector);
+		if (toSector == -1) continue;
+
+		decision.shouldMove    = true;
+		decision.fromTerritory = sourceName;
+		decision.fromSector    = movableSector;
+		decision.toTerritory   = best;
+		decision.toSector      = toSector;
+		decision.normalUnits   = unitsToMove;
+		decision.eliteUnits    = 0;
+		return decision;
 	}
-	
-	// If still no target, just move to first reachable
-	if (bestTarget.empty()) {
-		bestTarget = reachable[0];
-	}
-	
-	// Move half of units (at least 1)
-	int unitsInSource = view.map.getUnitsInTerritory(sourceTerritory, player->getFactionIndex());
-	int unitsToMove = std::max(1, unitsInSource / 2);
-	
-	decision.shouldMove = true;
-	decision.fromTerritory = sourceTerritory;
-	decision.toTerritory = bestTarget;
-	decision.normalUnits = unitsToMove;
-	decision.eliteUnits = 0;
 	
 	return decision;
 }

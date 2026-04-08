@@ -27,7 +27,7 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 		// Check for skip commands
 		if (input == "0" || input == "skip" || input == "Skip") {
 			std::cout << "  Shipment: Skipped" << std::endl;
-			return {.territoryName = "", .normalUnits = 0, .eliteUnits = 0, .shouldDeploy = false};
+			return {.territoryName = "", .normalUnits = 0, .eliteUnits = 0, .sector = -1, .shouldDeploy = false};
 		}
 		
 		// Try to parse as number first
@@ -38,7 +38,7 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 				validTerritorySelected = true;
 			} else if (index == 0) {
 				std::cout << "  Shipment: Skipped" << std::endl;
-				return {.territoryName = "", .normalUnits = 0, .eliteUnits = 0, .shouldDeploy = false};
+				return {.territoryName = "", .normalUnits = 0, .eliteUnits = 0, .sector = -1, .shouldDeploy = false};
 			} else {
 				std::cout << "  Invalid number (" << index << "). Please enter 1-" << validTargets.size() 
 				          << " or '0/skip' to abort: ";
@@ -68,10 +68,51 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 		eliteUnits = std::max(0, std::min(eliteUnits, player->getEliteUnitsReserve()));
 	}
 
+	// Ask for destination sector (if multi-sector territory)
+	const territory* destTerr = ctx.map.getTerritory(territoryChoice);
+	int chosenSector = -1;
+	if (destTerr && destTerr->sectors.size() > 1) {
+		std::cout << "\n  Sectors in " << territoryChoice << ":" << std::endl;
+		std::vector<int> safeSectors;
+		for (int s : destTerr->sectors) {
+			if (GameMap::canLeaveSector(s, ctx.stormSector)) {  // Safe to enter
+				std::cout << "  " << (safeSectors.size() + 1) << ". Sector " << s << " (safe)" << std::endl;
+				safeSectors.push_back(s);
+			} else {
+				std::cout << "  X. Sector " << s << " (IN STORM - cannot deploy)" << std::endl;
+			}
+		}
+		
+		if (!safeSectors.empty()) {
+			bool validSectorSelected = false;
+			do {
+				std::cout << "  Which sector to deploy to? (1-" << safeSectors.size() << "): ";
+				std::cin >> input;
+				try {
+					int sectorIndex = std::stoi(input);
+					if (sectorIndex >= 1 && sectorIndex <= static_cast<int>(safeSectors.size())) {
+						chosenSector = safeSectors[sectorIndex - 1];
+						validSectorSelected = true;
+					} else {
+						std::cout << "  Invalid sector number. Please enter 1-" << safeSectors.size() << ".\n";
+					}
+				} catch (...) {
+					std::cout << "  Invalid input. Please enter a number.\n";
+				}
+			} while (!validSectorSelected);
+		} else {
+			std::cout << "  No safe sectors available (all in storm).\n";
+			return {.territoryName = "", .normalUnits = 0, .eliteUnits = 0, .sector = -1, .shouldDeploy = false};
+		}
+	} else if (destTerr && destTerr->sectors.size() == 1) {
+		chosenSector = destTerr->sectors[0];
+	}
+
 	return {
 		.territoryName = territoryChoice,
 		.normalUnits = normalUnits,
 		.eliteUnits = eliteUnits,
+		.sector = chosenSector,
 		.shouldDeploy = (normalUnits + eliteUnits) > 0
 	};
 }
@@ -105,7 +146,7 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 		
 		if (input == "0" || input == "skip" || input == "Skip") {
 			std::cout << "  Movement: Skipped" << std::endl;
-			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .shouldMove = false};
+			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .fromSector = -1, .toSector = -1, .shouldMove = false};
 		}
 		
 		try {
@@ -165,7 +206,7 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 	
 	if (reachableTerritories.empty()) {
 		std::cout << "  No reachable destinations from " << fromTerritory << std::endl;
-		return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .shouldMove = false};
+		return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .fromSector = -1, .toSector = -1, .shouldMove = false};
 	}
 	
 	// Display reachable territories menu
@@ -182,7 +223,7 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 		std::cin >> input;
 		
 		if (input == "0" || input == "cancel" || input == "Cancel") {
-			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .shouldMove = false};
+			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, .fromSector = -1, .toSector = -1, .shouldMove = false};
 		}
 		
 		// Try number first
@@ -219,11 +260,97 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 		eliteUnits = std::max(0, std::min(eliteUnits, player->getEliteUnitsReserve()));
 	}
 	
+	// Ask for source sector (if multi-sector territory)
+	const territory* fromTerr = ctx.map.getTerritory(fromTerritory);
+	int fromSector = -1;
+	if (fromTerr && fromTerr->sectors.size() > 1) {
+		std::cout << "\n  Sectors in " << fromTerritory << " with your units:" << std::endl;
+		std::vector<int> sourceSectors;
+		for (int s : fromTerr->sectors) {
+			int unitsHere = ctx.map.getUnitsInTerritorySector(fromTerritory, player->getFactionIndex(), s);
+			if (unitsHere > 0 && GameMap::canLeaveSector(s, ctx.stormSector)) {
+				std::cout << "  " << (sourceSectors.size() + 1) << ". Sector " << s 
+					<< " (" << unitsHere << " units, safe)" << std::endl;
+				sourceSectors.push_back(s);
+			} else if (unitsHere > 0) {
+				std::cout << "  X. Sector " << s << " (" << unitsHere << " units, IN STORM - cannot leave)" << std::endl;
+			}
+		}
+		
+		if (!sourceSectors.empty()) {
+			bool validSectorSelected = false;
+			do {
+				std::cout << "  Which sector to move FROM? (1-" << sourceSectors.size() << "): ";
+				std::cin >> input;
+				try {
+					int sectorIndex = std::stoi(input);
+					if (sectorIndex >= 1 && sectorIndex <= static_cast<int>(sourceSectors.size())) {
+						fromSector = sourceSectors[sectorIndex - 1];
+						validSectorSelected = true;
+					} else {
+						std::cout << "  Invalid sector number. Please enter 1-" << sourceSectors.size() << ".\n";
+					}
+				} catch (...) {
+					std::cout << "  Invalid input. Please enter a number.\n";
+				}
+			} while (!validSectorSelected);
+		} else {
+			std::cout << "  No units can leave any sector (all in storm).\n";
+			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, 
+					.fromSector = -1, .toSector = -1, .shouldMove = false};
+		}
+	} else if (fromTerr && fromTerr->sectors.size() == 1) {
+		fromSector = fromTerr->sectors[0];
+	}
+	
+	// Ask for destination sector (if multi-sector territory)
+	const territory* toTerr = ctx.map.getTerritory(toTerritory);
+	int toSector = -1;
+	if (toTerr && toTerr->sectors.size() > 1) {
+		std::cout << "\n  Sectors in " << toTerritory << ":" << std::endl;
+		std::vector<int> destSectors;
+		for (int s : toTerr->sectors) {
+			if (GameMap::canLeaveSector(s, ctx.stormSector)) {  // Safe to enter
+				std::cout << "  " << (destSectors.size() + 1) << ". Sector " << s << " (safe)" << std::endl;
+				destSectors.push_back(s);
+			} else {
+				std::cout << "  X. Sector " << s << " (IN STORM - cannot enter)" << std::endl;
+			}
+		}
+		
+		if (!destSectors.empty()) {
+			bool validSectorSelected = false;
+			do {
+				std::cout << "  Which sector to move TO? (1-" << destSectors.size() << "): ";
+				std::cin >> input;
+				try {
+					int sectorIndex = std::stoi(input);
+					if (sectorIndex >= 1 && sectorIndex <= static_cast<int>(destSectors.size())) {
+						toSector = destSectors[sectorIndex - 1];
+						validSectorSelected = true;
+					} else {
+						std::cout << "  Invalid sector number. Please enter 1-" << destSectors.size() << ".\n";
+					}
+				} catch (...) {
+					std::cout << "  Invalid input. Please enter a number.\n";
+				}
+			} while (!validSectorSelected);
+		} else {
+			std::cout << "  No sectors available (all in storm).\n";
+			return {.fromTerritory = "", .toTerritory = "", .normalUnits = 0, .eliteUnits = 0, 
+					.fromSector = -1, .toSector = -1, .shouldMove = false};
+		}
+	} else if (toTerr && toTerr->sectors.size() == 1) {
+		toSector = toTerr->sectors[0];
+	}
+	
 	return {
 		.fromTerritory = fromTerritory,
 		.toTerritory = toTerritory,
 		.normalUnits = normalUnits,
 		.eliteUnits = eliteUnits,
+		.fromSector = fromSector,
+		.toSector = toSector,
 		.shouldMove = (normalUnits + eliteUnits) > 0
 	};
 }

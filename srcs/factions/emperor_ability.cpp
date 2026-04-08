@@ -44,8 +44,8 @@ void EmperorAbility::placeStartingForces(PhaseContext& ctx) {
 	
 	Player* emperor = ctx.players[emperorIndex];
 	
-	// Place 10 units on the map starting position
-	ctx.map.addUnitsToTerritory("Arrakeen", emperorIndex, 10, 0);
+	// Place 10 units on the map starting position (sector -1 auto-selects first sector)
+	ctx.map.addUnitsToTerritory("Arrakeen", emperorIndex, 10, 0, -1);
 	emperor->deployUnits(10);
 	
 	// Remaining 10 units in reserve

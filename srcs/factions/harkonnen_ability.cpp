@@ -60,8 +60,8 @@ void HarkonnenAbility::placeStartingForces(PhaseContext& ctx) {
 	
 	Player* harkonnen = ctx.players[harkonnenIndex];
 	
-	// Place 10 units in Carthag
-	ctx.map.addUnitsToTerritory("Carthag", harkonnenIndex, 10, 0);
+	// Place 10 units in Carthag (sector -1 auto-selects first sector)
+	ctx.map.addUnitsToTerritory("Carthag", harkonnenIndex, 10, 0, -1);
 	harkonnen->deployUnits(10);
 	
 	// Remaining 10 units in reserve
