@@ -15,7 +15,6 @@ int FactionAbility::getShipmentCost(const territory* terr, int unitCount) const 
 }
 
 std::vector<std::string> FactionAbility::getValidDeploymentTerritories(PhaseContext& /* ctx */) const {
-	// Default: unrestricted except Polar Sink (phase handles this)
 	return {};
 }
 

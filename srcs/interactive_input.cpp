@@ -71,7 +71,12 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 	// Ask for destination sector (if multi-sector territory)
 	const territory* destTerr = ctx.map.getTerritory(territoryChoice);
 	int chosenSector = -1;
-	if (destTerr && destTerr->sectors.size() > 1) {
+	
+	// Only skip sector selection for Polar Sink (always storm-safe, not part of sector system)
+	if (destTerr && destTerr->terrain == terrainType::northPole) {
+		chosenSector = -1;  // Special marker for Polar Sink
+	} else if (destTerr && destTerr->sectors.size() > 1) {
+		// Multi-sector territory - ask player to choose
 		std::cout << "\n  Sectors in " << territoryChoice << ":" << std::endl;
 		std::vector<int> safeSectors;
 		for (int s : destTerr->sectors) {
@@ -306,7 +311,12 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 	// Ask for destination sector (if multi-sector territory)
 	const territory* toTerr = ctx.map.getTerritory(toTerritory);
 	int toSector = -1;
-	if (toTerr && toTerr->sectors.size() > 1) {
+	
+	// Only skip sector selection for Polar Sink (always storm-safe, not part of sector system)
+	if (toTerr && toTerr->terrain == terrainType::northPole) {
+		toSector = -1;  // Special marker for Polar Sink
+	} else if (toTerr && toTerr->sectors.size() > 1) {
+		// Multi-sector territory - ask player to choose
 		std::cout << "\n  Sectors in " << toTerritory << ":" << std::endl;
 		std::vector<int> destSectors;
 		for (int s : toTerr->sectors) {

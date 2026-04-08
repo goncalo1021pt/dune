@@ -219,8 +219,8 @@ std::vector<std::string> FremenAbility::getValidDeploymentTerritories(PhaseConte
 		auto [currentTerr, distance] = queue.front();
 		queue.pop();
 		
-		// Add to valid list only if distance > 0 (exclude source) and not Polar Sink
-		if (distance > 0 && currentTerr->terrain != terrainType::northPole) {
+		// Add to valid list only if distance > 0 (exclude source)
+		if (distance > 0) {
 			validTerritories.push_back(currentTerr->name);
 		}
 		

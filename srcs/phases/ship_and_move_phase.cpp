@@ -103,7 +103,6 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	if (ability) restricted = ability->getValidDeploymentTerritories(ctx);
 	
 	auto isValid = [&](const territory& terr) -> bool {
-		if (terr.terrain == terrainType::northPole) return false;
 		// Cannot ship into a sector that is fully in storm.
 		if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) return false;
 		return view.map.canAddFactionToTerritory(terr.name, factionIndex);
@@ -198,7 +197,6 @@ bool ShipAndMovePhase::isValidDeployment(PhaseContext& ctx, int factionIndex,
 	
 	territory* terr = view.map.getTerritory(territoryName);
 	if (terr == nullptr) return false;
-	if (terr->terrain == terrainType::northPole) return false;
 	if (!GameMap::canEnterTerritory(terr, ctx.stormSector)) return false;
 	
 	return view.map.canAddFactionToTerritory(territoryName, factionIndex);
