@@ -5,6 +5,7 @@
 #include "map.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include <algorithm>
 
 std::string HarkonnenAbility::getFactionName() const {
 	return "Harkonnen";
@@ -84,4 +85,90 @@ void HarkonnenAbility::placeStartingForces(PhaseContext& ctx) {
 	harkonnen->deployUnits(10);
 	
 	// Remaining 10 units in reserve
+}
+
+void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
+	if (opponentIndex < 0 || opponentIndex >= (int)ctx.players.size()) return;
+	
+	// Find Harkonnen player
+	int harkonnenIndex = -1;
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		if (ctx.players[i]->getFactionAbility()->getFactionName() == "Harkonnen") {
+			harkonnenIndex = i;
+			break;
+		}
+	}
+	
+	if (harkonnenIndex < 0) return;
+	
+	Player* harkonnen = ctx.players[harkonnenIndex];
+	Player* opponent = ctx.players[opponentIndex];
+	
+	// If Harkonnen has all own leaders killed, must return all captured leaders
+	if (hasAllOwnLeadersKilled(ctx)) {
+		returnAllCapturedLeaders(ctx);
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Harkonnen] All own leaders killed, must return all captured leaders");
+		}
+		return;
+	}
+	
+	// Get available leaders from opponent
+	const auto& opponentLeaders = opponent->getLeaders();
+	if (opponentLeaders.empty()) return;
+	
+	// For now, select a random available leader from opponent
+	// TODO: Make this interactive (choose to capture 2 spice OR keep leader to use once)
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Harkonnen] May capture a leader from " + opponent->getFactionName() +
+			" OR take 2 spice. (Interactive choice not yet implemented - defaulting to 2 spice)");
+	}
+	
+	// Default: take 2 spice auto
+	harkonnen->addSpice(2);
+	
+	if (ctx.logger) {
+		Event e(EventType::BATTLE,
+			"[Harkonnen] Chooses 2 spice instead of capturing leader",
+			ctx.turnNumber, "BATTLE");
+		e.playerFaction = "Harkonnen";
+		e.spiceValue = 2;
+		ctx.logger->logEvent(e);
+	}
+}
+
+std::vector<int> HarkonnenAbility::getCapturedLeaders() const {
+	return capturedLeaderIndices;
+}
+
+void HarkonnenAbility::addCapturedLeader(int leaderIndex) {
+	capturedLeaderIndices.push_back(leaderIndex);
+}
+
+void HarkonnenAbility::removeCapturedLeader(int leaderIndex) {
+	auto it = std::find(capturedLeaderIndices.begin(), capturedLeaderIndices.end(), leaderIndex);
+	if (it != capturedLeaderIndices.end()) {
+		capturedLeaderIndices.erase(it);
+	}
+}
+
+void HarkonnenAbility::returnAllCapturedLeaders(PhaseContext& ctx) {
+	// TODO: Return captured leaders to their factions
+	capturedLeaderIndices.clear();
+}
+
+bool HarkonnenAbility::hasAllOwnLeadersKilled(PhaseContext& ctx) const {
+	// Find Harkonnen player
+	int harkonnenIndex = -1;
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		if (ctx.players[i]->getFactionAbility()->getFactionName() == "Harkonnen") {
+			harkonnenIndex = i;
+			break;
+		}
+	}
+	
+	if (harkonnenIndex < 0) return false;
+	
+	const auto& leaders = ctx.players[harkonnenIndex]->getLeaders();
+	return leaders.empty();
 }

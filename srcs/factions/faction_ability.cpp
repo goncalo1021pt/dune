@@ -37,6 +37,7 @@ int FactionAbility::getNormalUnitStrength() const { return 1; }
 bool FactionAbility::requiresSpiceForFullUnitStrength() const { return true; }
 void FactionAbility::onBeforeBattlePlanReveal(PhaseContext& ctx, int opponentIndex) { (void)ctx; (void)opponentIndex; }
 void FactionAbility::onOpponentBattlePlanRevealed(PhaseContext& ctx, int opponentIndex) { (void)ctx; (void)opponentIndex; }
+void FactionAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) { (void)ctx; (void)opponentIndex; }
 
 bool FactionAbility::keepsAllTraitorCards() const { return false; }
 
