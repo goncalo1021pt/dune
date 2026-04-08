@@ -78,8 +78,13 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 				view.map.removeSpiceFromSector(territory.name, spiceCollected, unitStack.sector);
 
 				if (ctx.logger) {
+					std::string unitDesc = "(" + std::to_string(unitStack.normal_units) + " normal + " 
+						+ std::to_string(unitStack.elite_units) + " elite)";
+					std::string fullMessage = unitDesc + " at Sector " + std::to_string(unitStack.sector) 
+						+ " collects " + std::to_string(spiceCollected) + " spice"
+						+ (spiceCollected < totalUnits * 2 ? " [only " + std::to_string(spiceInSector) + " available]" : "");
 					Event e(EventType::SPICE_COLLECTED,
-						"collects " + std::to_string(spiceCollected) + " spice",
+						fullMessage,
 						ctx.turnNumber, "SPICE_COLLECTION");
 					e.playerFaction = view.players[unitStack.factionOwner]->getFactionName();
 					e.territory = territory.name;

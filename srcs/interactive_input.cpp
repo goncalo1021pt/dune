@@ -81,10 +81,14 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 		std::vector<int> safeSectors;
 		for (int s : destTerr->sectors) {
 			if (GameMap::canLeaveSector(s, ctx.stormSector)) {  // Safe to enter
-				std::cout << "  " << (safeSectors.size() + 1) << ". Sector " << s << " (safe)" << std::endl;
+				int spiceHere = ctx.map.getSpiceInSector(territoryChoice, s);
+				std::cout << "  " << (safeSectors.size() + 1) << ". Sector " << s << " (safe, " 
+					<< spiceHere << " spice)" << std::endl;
 				safeSectors.push_back(s);
 			} else {
-				std::cout << "  X. Sector " << s << " (IN STORM - cannot deploy)" << std::endl;
+				int spiceHere = ctx.map.getSpiceInSector(territoryChoice, s);
+				std::cout << "  X. Sector " << s << " (IN STORM - cannot deploy, " 
+					<< spiceHere << " spice)" << std::endl;
 			}
 		}
 		
@@ -321,10 +325,14 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 		std::vector<int> destSectors;
 		for (int s : toTerr->sectors) {
 			if (GameMap::canLeaveSector(s, ctx.stormSector)) {  // Safe to enter
-				std::cout << "  " << (destSectors.size() + 1) << ". Sector " << s << " (safe)" << std::endl;
+				int spiceHere = ctx.map.getSpiceInSector(toTerritory, s);
+				std::cout << "  " << (destSectors.size() + 1) << ". Sector " << s << " (safe, " 
+					<< spiceHere << " spice)" << std::endl;
 				destSectors.push_back(s);
 			} else {
-				std::cout << "  X. Sector " << s << " (IN STORM - cannot enter)" << std::endl;
+				int spiceHere = ctx.map.getSpiceInSector(toTerritory, s);
+				std::cout << "  X. Sector " << s << " (IN STORM - cannot enter, " 
+					<< spiceHere << " spice)" << std::endl;
 			}
 		}
 		
