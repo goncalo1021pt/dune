@@ -118,7 +118,7 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 	// Interactive choice: steal a leader or take 2 spice
 	if (ctx.interactiveMode) {
 		std::cout << "\n[Harkonnen] " << harkonnen->getFactionName() << " won battle against " 
-		          << opponent->getFactionName() << "!\n";
+				  << opponent->getFactionName() << "!\n";
 		std::cout << "Choose an option:\n";
 		std::cout << "  0: No reward\n";
 		
