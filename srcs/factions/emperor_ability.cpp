@@ -2,6 +2,8 @@
 #include "player.hpp"
 #include "phases/phase_context.hpp"
 #include "map.hpp"
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
 
 std::string EmperorAbility::getFactionName() const {
 	return "Emperor";
@@ -21,13 +23,23 @@ void EmperorAbility::onOtherFactionPaidForCard(PhaseContext& ctx, int payingFact
 		return;  // Emperor not in game or Emperor is paying (shouldn't happen)
 	}
 	
-	// Emperor receives the spice payment
+	// Emperor receives the spice payment (instead of going to bank)
 	ctx.players[emperorIndex]->addSpice(amount);
+	
+	if (ctx.logger) {
+		Event e(EventType::BID_PLACED,
+			"[Emperor] Intercepts " + std::to_string(amount) + " spice from " + 
+			ctx.players[payingFactionIndex]->getFactionName() + "'s bid",
+			ctx.turnNumber, "BIDDING");
+		e.playerFaction = "Emperor";
+		e.spiceValue = amount;
+		ctx.logger->logEvent(e);
+	}
 }
 
 void EmperorAbility::setupAtStart(Player* player) {
 	if (player == nullptr) return;
-	player->setSpice(10);  // Emperor start with 10 spice
+	player->setSpice(10);  // Emperor starts with 10 spice
 }
 
 void EmperorAbility::placeStartingForces(PhaseContext& ctx) {
@@ -44,9 +56,17 @@ void EmperorAbility::placeStartingForces(PhaseContext& ctx) {
 	
 	Player* emperor = ctx.players[emperorIndex];
 	
-	// Place 10 units on the map starting position (sector -1 auto-selects first sector)
-	ctx.map.addUnitsToTerritory("Arrakeen", emperorIndex, 10, 0, -1);
-	emperor->deployUnits(10);
+	// Emperor starts with Sardukar (elite) soldiers outside the planet
+	// Convert 20 normal units to 20 elite units (Sardukar) in reserves
+	// Emperor does NOT deploy any units initially - they stay in reserves
 	
-	// Remaining 10 units in reserve
+	// Remove the 20 normal units that all players start with
+	emperor->destroyUnits(20);
+	
+	// Add 20 elite units (Sardukar) to reserves
+	emperor->reviveEliteUnits(20);
+	
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Emperor] Starts with 20 Sardukar elite soldiers in reserves (outside planet)");
+	}
 }
