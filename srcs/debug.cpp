@@ -95,14 +95,18 @@ void GameDebugger::printGameState() {
 	const auto& territories = gameInstance->getTerritories();
 	
 	for (const auto& territory : territories) {
-		bool hasSpice = territory.spiceAmount > 0;
+		int totalSpice = 0;
+		for (const auto& spice : territory.spicePresent) {
+			totalSpice += spice.amount;
+		}
+		bool hasSpice = totalSpice > 0;
 		bool hasTroops = !territory.unitsPresent.empty();
 		
 		if (hasSpice || hasTroops) {
 			std::cout << "  " << std::setw(20) << territory.name << ": ";
 			
 			if (hasSpice) {
-				std::cout << territory.spiceAmount << " spice";
+				std::cout << totalSpice << " spice";
 				if (hasTroops) std::cout << " | ";
 			}
 			

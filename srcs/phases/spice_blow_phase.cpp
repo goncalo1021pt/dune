@@ -30,8 +30,8 @@ void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, Ga
 	}
 
 	terr->unitsPresent.clear();
-	int spiceDestroyed = terr->spiceAmount;
-	terr->spiceAmount = 0;
+	int spiceDestroyed = map.getSpiceInTerritory(territoryName);
+	map.removeAllSpiceFromTerritory(territoryName);
 
 	if (ctxPtr && ctxPtr->logger) {
 		if (anyoneRode) {
@@ -110,7 +110,8 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 						if (extraCard.type == spiceCardType::LOCATION) {
 							territory* extraTerr = view.map.getTerritory(extraCard.territoryName);
 							if (extraTerr != nullptr) {
-								extraTerr->spiceAmount += extraCard.spiceAmount;
+								int sector = extraTerr->sectors.empty() ? -1 : extraTerr->sectors[0];
+								view.map.addSpiceToTerritory(extraCard.territoryName, extraCard.spiceAmount, sector);
 								if (ctx.logger) {
 									Event e(EventType::SPICE_BLOWN,
 										"[After Worm] " + std::to_string(extraCard.spiceAmount) + " spice placed at " + extraCard.territoryName,
@@ -139,7 +140,8 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 			continue;
 		}
 
-		terr->spiceAmount += card.spiceAmount;
+		int sector = terr->sectors.empty() ? -1 : terr->sectors[0];
+		view.map.addSpiceToTerritory(card.territoryName, card.spiceAmount, sector);
 
 		if (ctx.logger) {
 			Event e(EventType::SPICE_BLOWN,

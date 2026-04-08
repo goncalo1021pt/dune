@@ -189,8 +189,8 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 
 	// Place units at destination
 	if (!destinationTerritory.empty()) {
-		// Deploy to chosen territory
-		ctx.map.addUnitsToTerritory(destinationTerritory, fremenIndex, fremenUnitsHere, 0);
+		// Deploy to chosen territory (sector -1 auto-selects first safe sector)
+		ctx.map.addUnitsToTerritory(destinationTerritory, fremenIndex, fremenUnitsHere, 0, -1);
 		if (ctx.logger) {
 			ctx.logger->logDebug("Fremen units deployed to " + destinationTerritory + " via worm");
 		}
@@ -219,8 +219,8 @@ std::vector<std::string> FremenAbility::getValidDeploymentTerritories(PhaseConte
 		auto [currentTerr, distance] = queue.front();
 		queue.pop();
 		
-		// Add to valid list only if distance > 0 (exclude source) and not Polar Sink
-		if (distance > 0 && currentTerr->terrain != terrainType::northPole) {
+		// Add to valid list only if distance > 0 (exclude source)
+		if (distance > 0) {
 			validTerritories.push_back(currentTerr->name);
 		}
 		
@@ -350,10 +350,10 @@ void FremenAbility::placeStartingForces(PhaseContext& ctx) {
 		}
 	}
 	
-	// Deploy units to chosen territories
+	// Deploy units to chosen territories (sector -1 auto-selects first sector)
 	for (int i = 0; i < 3; ++i) {
 		if (distribution[i] > 0) {
-			ctx.map.addUnitsToTerritory(territories[i], fremenIndex, distribution[i], 0);
+			ctx.map.addUnitsToTerritory(territories[i], fremenIndex, distribution[i], 0, -1);
 			fremen->deployUnits(distribution[i]);
 		}
 	}

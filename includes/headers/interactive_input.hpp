@@ -16,6 +16,7 @@ public:
 		std::string territoryName;
 		int normalUnits;
 		int eliteUnits;
+		int sector;       // -1 = auto, otherwise specific sector
 		bool shouldDeploy;
 	};
 
@@ -24,6 +25,8 @@ public:
 		std::string toTerritory;
 		int normalUnits;
 		int eliteUnits;
+		int fromSector;  // -1 = auto, otherwise specific sector
+		int toSector;    // -1 = auto, otherwise specific sector
 		bool shouldMove;
 	};
 

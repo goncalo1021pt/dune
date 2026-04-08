@@ -1,5 +1,9 @@
 #include "phases/storm_phase.hpp"
+#include "factions/faction_ability.hpp"
+#include "map.hpp"
+#include "player.hpp"
 #include <algorithm>
+#include <set>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 
@@ -9,20 +13,117 @@ void StormPhase::initializeStormDeck(std::vector<int>& stormDeck, std::mt19937& 
 }
 
 int StormPhase::drawStormCard(std::vector<int>& stormDeck, std::mt19937& rng) {
-	// Draw first card from deck
 	int card = stormDeck[0];
-	// Reshuffle deck for next turn (allows same card to be drawn consecutively)
 	initializeStormDeck(stormDeck, rng);
 	return card;
 }
 
 void StormPhase::moveStorm(int sectorsToMove, int& stormSector) {
 	stormSector += sectorsToMove;
-	while (stormSector > TOTAL_SECTORS) {
-		stormSector -= TOTAL_SECTORS;
-	}
-	while (stormSector < 1) {
-		stormSector += TOTAL_SECTORS;
+	while (stormSector > TOTAL_SECTORS) stormSector -= TOTAL_SECTORS;
+	while (stormSector < 1)             stormSector += TOTAL_SECTORS;
+}
+
+void StormPhase::applyStormDamage(PhaseContext& ctx, int prevSector, int move) {
+	// Build the full set of sectors swept this turn (all sectors passed through
+	// AND the final stopping sector).
+	std::set<int> swept = GameMap::getStormSweep(prevSector, move);
+
+	const std::vector<territory>& allTerritories = ctx.map.getTerritories();
+	
+	for (const auto& constTerr : allTerritories) {
+		// Get mutable reference to this territory
+		territory* terr = ctx.map.getTerritory(constTerr.name);
+		if (terr == nullptr) continue;
+
+		// Polar Sink is never affected by storm.
+		if (terr->terrain == terrainType::northPole) continue;
+		// Rock and city territories are always storm-safe.
+		if (terr->terrain == terrainType::rock)      continue;
+		if (terr->terrain == terrainType::city)      continue;
+
+		// Which sectors of this territory are inside the swept set?
+		std::set<int> damagedSectors;
+		for (int s : terr->sectors) {
+			if (swept.count(s)) damagedSectors.insert(s);
+		}
+		if (damagedSectors.empty()) continue;
+
+		// Process each unit stack. Stacks in safe sectors are untouched.
+		// Stacks in damaged sectors are killed (or halved for Fremen).
+		std::vector<unitStack> survivors;
+		int totalKilled = 0;
+
+		for (auto& stack : terr->unitsPresent) {
+			if (!damagedSectors.count(stack.sector)) {
+				// Safe sector — keep this stack unchanged.
+				survivors.push_back(stack);
+				continue;
+			}
+
+			FactionAbility* ability = ctx.getAbility(stack.factionOwner);
+
+			if (ability && ability->hasReducedStormLosses()) {
+				// Fremen: kill half (round up), survivors stay in same sector.
+				int killedNormal = (stack.normal_units + 1) / 2;
+				int killedElite  = (stack.elite_units  + 1) / 2;
+				stack.normal_units -= killedNormal;
+				stack.elite_units  -= killedElite;
+				ctx.players[stack.factionOwner]->destroyUnits(killedNormal + killedElite);
+				totalKilled += killedNormal + killedElite;
+
+				if (ctx.logger && (killedNormal + killedElite) > 0) {
+					ctx.logger->logDebug("Storm (sector " + std::to_string(stack.sector) +
+						"): Fremen lose " + std::to_string(killedNormal + killedElite) +
+						" units in " + terr->name + " (half loss)");
+				}
+
+				if (stack.normal_units > 0 || stack.elite_units > 0) {
+					survivors.push_back(stack);
+				}
+			} else {
+				// Everyone else: entire stack in the damaged sector is destroyed.
+				int killed = stack.normal_units + stack.elite_units;
+				ctx.players[stack.factionOwner]->destroyUnits(killed);
+				totalKilled += killed;
+
+				if (ctx.logger && killed > 0) {
+					ctx.logger->logDebug("Storm (sector " + std::to_string(stack.sector) +
+						"): " + ctx.players[stack.factionOwner]->getFactionName() +
+						" loses " + std::to_string(killed) +
+						" units in " + terr->name);
+				}
+				// Stack is not pushed to survivors — it is gone.
+			}
+		}
+
+		terr->unitsPresent = survivors;
+
+		// Remove spice from any territory that had at least one damaged sector.
+		// Rulebook: spice in a sector the storm passes through is removed.
+		// Since spice now tracks sectors, we remove spice from damaged sectors.
+		int spiceLost = ctx.map.getSpiceInTerritory(terr->name);
+		if (spiceLost > 0) {
+			ctx.map.removeAllSpiceFromTerritory(terr->name);
+
+			if (ctx.logger) {
+				Event e(EventType::SPICE_BLOWN,
+					"Storm destroys " + std::to_string(spiceLost) + " spice in " + terr->name,
+					ctx.turnNumber, "STORM");
+				e.territory  = terr->name;
+				e.spiceValue = spiceLost;
+				ctx.logger->logEvent(e);
+			}
+		}
+
+		if (ctx.logger && totalKilled > 0) {
+			Event e(EventType::UNITS_KILLED,
+				"Storm kills " + std::to_string(totalKilled) + " units in " + terr->name,
+				ctx.turnNumber, "STORM");
+			e.territory  = terr->name;
+			e.unitCount  = totalKilled;
+			ctx.logger->logEvent(e);
+		}
 	}
 }
 
@@ -33,15 +134,17 @@ void StormPhase::execute(PhaseContext& ctx) {
 	auto view = ctx.getStormView();
 
 	if (view.turnNumber == 1) {
+		// Turn 1: place storm at a random starting sector.
+		// No units have been placed yet so damage application is skipped.
 		std::uniform_int_distribution<> startSectorDist(1, 18);
-		view.stormSector = startSectorDist(view.rng);
-		view.lastStormCard = 0;
-		view.nextStormCard = drawStormCard(view.stormDeck, view.rng);
+		view.stormSector     = startSectorDist(view.rng);
+		view.lastStormCard   = 0;
+		view.nextStormCard   = drawStormCard(view.stormDeck, view.rng);
 		view.hasNextStormCard = true;
 
 		if (ctx.logger) {
 			Event e(EventType::STORM_PLACED,
-				"storm placed at random sector " + std::to_string(view.stormSector),
+				"Storm placed at sector " + std::to_string(view.stormSector),
 				ctx.turnNumber, "STORM");
 			e.territory = std::to_string(view.stormSector);
 			ctx.logger->logEvent(e);
@@ -49,24 +152,32 @@ void StormPhase::execute(PhaseContext& ctx) {
 		return;
 	}
 
+	// Subsequent turns: draw card, move storm, apply damage to swept sectors.
 	if (!view.hasNextStormCard) {
-		view.nextStormCard = drawStormCard(view.stormDeck, view.rng);
+		view.nextStormCard    = drawStormCard(view.stormDeck, view.rng);
 		view.hasNextStormCard = true;
 	}
 
-	view.lastStormCard = view.nextStormCard;
+	int prevSector        = view.stormSector;
+	view.lastStormCard    = view.nextStormCard;
 	view.hasNextStormCard = false;
+
 	moveStorm(view.lastStormCard, view.stormSector);
 
-	view.nextStormCard = drawStormCard(view.stormDeck, view.rng);
+	// Pre-fetch next card for the next turn.
+	view.nextStormCard    = drawStormCard(view.stormDeck, view.rng);
 	view.hasNextStormCard = true;
 
 	if (ctx.logger) {
 		Event e(EventType::STORM_MOVED,
-			"storm moved: card " + std::to_string(view.lastStormCard) + 
-			" -> now at sector " + std::to_string(view.stormSector),
+			"Storm moves " + std::to_string(view.lastStormCard) +
+			" sectors (was " + std::to_string(prevSector) +
+			", now sector " + std::to_string(view.stormSector) + ")",
 			ctx.turnNumber, "STORM");
 		e.spiceValue = view.lastStormCard;
 		ctx.logger->logEvent(e);
 	}
+
+	// Apply damage to all sectors swept this turn.
+	applyStormDamage(ctx, prevSector, view.lastStormCard);
 }
