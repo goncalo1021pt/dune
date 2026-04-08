@@ -513,9 +513,12 @@ ShipAndMovePhase::MovementDecision ShipAndMovePhase::aiDecideMovement(
 		int bestSpice = -1;
 		for (const auto& name : reachable) {
 			const territory* t = view.map.getTerritory(name);
-			if (t && t->spiceAmount > bestSpice) {
-				bestSpice = t->spiceAmount;
-				best = name;
+			if (t) {
+				int spiceHere = view.map.getSpiceInTerritory(name);
+				if (spiceHere > bestSpice) {
+					bestSpice = spiceHere;
+					best = name;
+				}
 			}
 		}
 		if (best.empty()) {

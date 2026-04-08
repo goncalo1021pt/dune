@@ -18,6 +18,11 @@ struct unitStack {
 							// matches one entry from the territory's sectors[] list
 };
 
+struct spiceStack {
+	int amount;
+	int sector;
+};
+
 enum class terrainType {
 	desert,
 	rock,
@@ -32,7 +37,7 @@ struct territory
 	std::vector<int> sectors;
 	std::vector<territory*> neighbourPtrs;  // Pointers to neighbor territories
 	
-	int spiceAmount;
+	std::vector<spiceStack> spicePresent;	// spice piles with sector info
 	std::vector<unitStack> unitsPresent;
 	bool hasTransporter;  // if its arrakeen or carthag
 	bool specialMovement;  // if its arrakeen or carthag
@@ -44,6 +49,7 @@ class GameMap {
 		std::vector<territory> territories;
 		
 		void addTerritory(const std::string& name, terrainType terrain, int spiceAmount, const std::vector<int>& sectors);
+		void addTerritory(const std::string& name, terrainType terrain, int spiceAmount, const std::vector<int>& sectors, const int spiceSector);
 		void linkNeighbours();
 		void linkTerritoryNeighbours(const std::string& territoryName, const std::vector<std::string>& neighbourNames);
 		
@@ -83,6 +89,26 @@ class GameMap {
 
 		// Units for a faction in a specific sector only.
 		int getUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
+
+		// ---------------------------------------------------------------
+		// Spice operations — sector-aware
+		// ---------------------------------------------------------------
+
+		// Add spice to a territory in a specific sector.
+		void addSpiceToTerritory(const std::string& territoryName, int amount, int sector);
+
+		// Get total spice in a territory (all sectors summed).
+		int getSpiceInTerritory(const std::string& territoryName) const;
+
+		// Get spice in a specific sector only.
+		int getSpiceInSector(const std::string& territoryName, int sector) const;
+
+		// Remove spice from a specific sector.
+		// Returns amount actually removed (may be less than requested).
+		int removeSpiceFromSector(const std::string& territoryName, int amount, int sector);
+
+		// Remove all spice from a territory.
+		void removeAllSpiceFromTerritory(const std::string& territoryName);
 
 		// ---------------------------------------------------------------
 		// Storm helpers

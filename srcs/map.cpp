@@ -12,7 +12,24 @@ void GameMap::addTerritory(const std::string& name, terrainType terrain, int spi
 	territory newTerritory;
 	newTerritory.name = name;
 	newTerritory.terrain = terrain;
-	newTerritory.spiceAmount = spiceAmount;
+	// For old calls: store spice in first sector (or sector -1 for no spice)
+	if (spiceAmount > 0 && !sectors.empty()) {
+		newTerritory.spicePresent.push_back({spiceAmount, sectors[0]});
+	}
+	newTerritory.sectors = sectors;
+	newTerritory.hasTransporter = false;
+	newTerritory.specialMovement = false;
+	territories.push_back(newTerritory);
+}
+
+void GameMap::addTerritory(const std::string& name, terrainType terrain, int spiceAmount, const std::vector<int>& sectors, const int spiceSector) {
+	territory newTerritory;
+	newTerritory.name = name;
+	newTerritory.terrain = terrain;
+	// New version: store spice with explicit sector
+	if (spiceAmount > 0) {
+		newTerritory.spicePresent.push_back({spiceAmount, spiceSector});
+	}
 	newTerritory.sectors = sectors;
 	newTerritory.hasTransporter = false;
 	newTerritory.specialMovement = false;
@@ -44,32 +61,32 @@ void GameMap::initializeMap() {
 	addTerritory("Cielago West",       terrainType::desert, 0,  {18, 1});
 	addTerritory("Meridian",           terrainType::desert, 0,  {1, 2});
 	addTerritory("Cielago Depression", terrainType::desert, 0,  {1, 2, 3});
-	addTerritory("Cielago North",      terrainType::desert, 8,  {1, 2, 3});
-	addTerritory("Cielago South",      terrainType::desert, 12, {2, 3});
+	addTerritory("Cielago North",      terrainType::desert, 8,  {1, 2, 3}, 3);
+	addTerritory("Cielago South",      terrainType::desert, 12, {2, 3}, 2);
 	addTerritory("Cielago East",       terrainType::desert, 0,  {3, 4});
 	addTerritory("Harg Pass",          terrainType::desert,  0, {4, 5});
-	addTerritory("South Mesa",         terrainType::desert,  0, {4, 5, 6});
-	addTerritory("The Minor Erg",      terrainType::desert,  0, {5, 6, 7, 8});
-	addTerritory("Red Chasm",          terrainType::desert,  8, {7});
+	addTerritory("South Mesa",         terrainType::desert,  10, {4, 5, 6}, 5);
+	addTerritory("The Minor Erg",      terrainType::desert,  8, {5, 6, 7, 8}, 8);
+	addTerritory("Red Chasm",          terrainType::desert,  8, {7}, 7);
 	addTerritory("Gara Kulon",         terrainType::desert,  0, {8});
 	addTerritory("Basin",              terrainType::desert,  0, {9});
 	addTerritory("Hole in the Rock",   terrainType::desert,  0, {9});
-	addTerritory("Sihaya Ridge",       terrainType::desert,  6, {9});
+	addTerritory("Sihaya Ridge",       terrainType::desert,  6, {9}, 9);
 	addTerritory("Imperial Basin",     terrainType::desert,  0, {9, 10, 11});
-	addTerritory("Old Gap",            terrainType::desert,  6, {9, 10, 11});
+	addTerritory("Old Gap",            terrainType::desert,  6, {9, 10, 11}, 10);
 	addTerritory("Arsunt",             terrainType::desert,  0, {11, 12});
-	addTerritory("Broken Land",        terrainType::desert,  8, {11, 12});
+	addTerritory("Broken Land",        terrainType::desert,  8, {11, 12}, 12);
 	addTerritory("Tsimpo",             terrainType::desert,  0, {11, 12, 13});
-	addTerritory("Hagga Basin",        terrainType::desert,  6, {12, 13});
-	addTerritory("Rock Outcroppings",  terrainType::desert,  6, {13, 14});
+	addTerritory("Hagga Basin",        terrainType::desert,  6, {12, 13}, 13);
+	addTerritory("Rock Outcroppings",  terrainType::desert,  6, {13, 14}, 14);
 	addTerritory("Bight of the Cliff", terrainType::desert,  0, {14, 15});
 	addTerritory("Wind Pass",          terrainType::desert,  0, {14, 15, 16, 17});
-	addTerritory("The Great Flat",     terrainType::desert, 10, {15});
-	addTerritory("Funeral Plain",      terrainType::desert,  6, {15});
+	addTerritory("The Great Flat",     terrainType::desert, 10, {15}, 15);
+	addTerritory("Funeral Plain",      terrainType::desert,  6, {15}, 15);
 	addTerritory("The Greater Flat",   terrainType::desert,  0, {16});
-	addTerritory("Habbanya Erg",       terrainType::desert,  8, {16, 17});
-	addTerritory("Wind Pass North",    terrainType::desert,  6, {17, 18});
-	addTerritory("Habbanya Ridge Flat",terrainType::desert, 10, {17, 18});
+	addTerritory("Habbanya Erg",       terrainType::desert,  8, {16, 17}, 16);
+	addTerritory("Wind Pass North",    terrainType::desert,  6, {17, 18}, 17);
+	addTerritory("Habbanya Ridge Flat",terrainType::desert, 10, {17, 18}, 18);
 
 	addTerritory("Polar Sink", terrainType::northPole, 0,
 		{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18});
@@ -214,6 +231,75 @@ int GameMap::getUnitsInTerritorySector(const std::string& territoryName, int fac
 		}
 	}
 	return 0;
+}
+
+// =============================================================================
+// Spice operations — sector-aware
+// =============================================================================
+
+void GameMap::addSpiceToTerritory(const std::string& territoryName, int amount, int sector) {
+	territory* terr = getTerritory(territoryName);
+	if (terr == nullptr || amount <= 0) return;
+
+	// Check if spice already exists in this sector
+	for (auto& stack : terr->spicePresent) {
+		if (stack.sector == sector) {
+			stack.amount += amount;
+			return;
+		}
+	}
+
+	// Create new spice stack in this sector
+	spiceStack newStack;
+	newStack.amount = amount;
+	newStack.sector = sector;
+	terr->spicePresent.push_back(newStack);
+}
+
+int GameMap::getSpiceInTerritory(const std::string& territoryName) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int total = 0;
+	for (const auto& stack : terr->spicePresent) {
+		total += stack.amount;
+	}
+	return total;
+}
+
+int GameMap::getSpiceInSector(const std::string& territoryName, int sector) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	for (const auto& stack : terr->spicePresent) {
+		if (stack.sector == sector) {
+			return stack.amount;
+		}
+	}
+	return 0;
+}
+
+int GameMap::removeSpiceFromSector(const std::string& territoryName, int amount, int sector) {
+	territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	for (auto& stack : terr->spicePresent) {
+		if (stack.sector == sector) {
+			int removed = std::min(amount, stack.amount);
+			stack.amount -= removed;
+			// Don't remove empty stacks — just leave them at 0
+			// (simplifies iteration elsewhere)
+			return removed;
+		}
+	}
+	return 0;
+}
+
+void GameMap::removeAllSpiceFromTerritory(const std::string& territoryName) {
+	territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return;
+
+	terr->spicePresent.clear();
 }
 
 // =============================================================================

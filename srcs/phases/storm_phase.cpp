@@ -101,11 +101,10 @@ void StormPhase::applyStormDamage(PhaseContext& ctx, int prevSector, int move) {
 
 		// Remove spice from any territory that had at least one damaged sector.
 		// Rulebook: spice in a sector the storm passes through is removed.
-		// Since spice has no sector (it covers the territory), we remove it all
-		// when any part of the territory is hit.
-		if (terr->spiceAmount > 0) {
-			int spiceLost = terr->spiceAmount;
-			terr->spiceAmount = 0;
+		// Since spice now tracks sectors, we remove spice from damaged sectors.
+		int spiceLost = ctx.map.getSpiceInTerritory(terr->name);
+		if (spiceLost > 0) {
+			ctx.map.removeAllSpiceFromTerritory(terr->name);
 
 			if (ctx.logger) {
 				Event e(EventType::SPICE_BLOWN,

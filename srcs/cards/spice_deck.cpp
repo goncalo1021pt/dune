@@ -21,15 +21,16 @@ void SpiceDeck::initialize(GameMap& map) {
 			continue;
 		}
 
-		if (terr.terrain == terrainType::desert && terr.spiceAmount > 0) {
+		if (terr.terrain == terrainType::desert && !terr.spicePresent.empty()) {
+			int totalSpice = map.getSpiceInTerritory(terr.name);
 			spiceCard locationCard;
 			locationCard.type = spiceCardType::LOCATION;
 			locationCard.territoryName = terr.name;
-			locationCard.spiceAmount = terr.spiceAmount;
+			locationCard.spiceAmount = totalSpice;
 			deck.push_back(locationCard);
 		}
 
-		mutableTerritory->spiceAmount = 0;
+		map.removeAllSpiceFromTerritory(terr.name);
 	}
 
 	// Add worm cards

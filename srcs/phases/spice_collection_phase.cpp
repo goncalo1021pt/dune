@@ -55,7 +55,8 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 	}
 	
 	for (const auto& territory : view.map.getTerritories()) {
-		if (territory.spiceAmount <= 0 || territory.unitsPresent.empty()) {
+		int totalSpice = view.map.getSpiceInTerritory(territory.name);
+		if (totalSpice <= 0 || territory.unitsPresent.empty()) {
 			continue;
 		}
 
@@ -65,14 +66,16 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 				continue;
 			}
 
-			// Each unit collects 2 spice
-			int spiceCollected = std::min(totalUnits * 2, territory.spiceAmount);
+			// Each unit collects 2 spice from the current sector
+			int spiceInSector = view.map.getSpiceInSector(territory.name, unitStack.sector);
+			int spiceCollected = std::min(totalUnits * 2, spiceInSector);
 			
-			// Add to player
-			view.players[unitStack.factionOwner]->addSpice(spiceCollected);
-			
-			// Remove from territory
-			view.map.getTerritory(territory.name)->spiceAmount -= spiceCollected;
+			if (spiceCollected > 0) {
+				// Add to player
+				view.players[unitStack.factionOwner]->addSpice(spiceCollected);
+				
+				// Remove from territory's sector
+				view.map.removeSpiceFromSector(territory.name, spiceCollected, unitStack.sector);
 
 				if (ctx.logger) {
 					Event e(EventType::SPICE_COLLECTED,
@@ -83,6 +86,7 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 					e.spiceValue = spiceCollected;
 					ctx.logger->logEvent(e);
 				}
+			}
 		}
 	}
 }
