@@ -5,6 +5,7 @@
 #include "map.hpp"
 #include <queue>
 #include <set>
+#include <algorithm>
 #include <iostream>
 #include <string>
 
@@ -34,6 +35,168 @@ bool FremenAbility::survivesWorm() const {
 
 bool FremenAbility::hasReducedStormLosses() const {
 	return true;  // Fremen take half losses in storms
+}
+
+bool FremenAbility::canRideWorm() const {
+	return true;  // Fremen can ride sandworms
+}
+
+bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& territoryName) {
+	// Fremen can ride the worm to relocate their units to any other territory
+	
+	territory* wormTerritory = ctx.map.getTerritory(territoryName);
+	if (wormTerritory == nullptr) {
+		return false;
+	}
+
+	// Find Fremen player
+	int fremenIndex = -1;
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		if (ctx.players[i]->getFactionAbility()->getFactionName() == "Fremen") {
+			fremenIndex = i;
+			break;
+		}
+	}
+
+	if (fremenIndex < 0) {
+		return false;
+	}
+
+	// Count Fremen units in this territory
+	int fremenUnitsHere = 0;
+	for (const auto& stack : wormTerritory->unitsPresent) {
+		if (stack.factionOwner == fremenIndex) {
+			fremenUnitsHere += stack.normal_units + stack.elite_units;
+		}
+	}
+
+	if (fremenUnitsHere <= 0) {
+		return false;  // No Fremen units to ride the worm
+	}
+
+	// Remove Fremen units from this territory before worm kills anything
+	for (auto it = wormTerritory->unitsPresent.begin(); it != wormTerritory->unitsPresent.end(); ++it) {
+		if (it->factionOwner == fremenIndex) {
+			it->normal_units = 0;
+			it->elite_units = 0;
+		}
+	}
+
+	// Clean up empty stacks
+	wormTerritory->unitsPresent.erase(
+		std::remove_if(wormTerritory->unitsPresent.begin(), wormTerritory->unitsPresent.end(),
+			[](const unitStack& stack) { return stack.normal_units == 0 && stack.elite_units == 0; }),
+		wormTerritory->unitsPresent.end()
+	);
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("[WORM RIDING] Fremen ride worm from " + territoryName + 
+			" with " + std::to_string(fremenUnitsHere) + " units");
+	}
+
+	// Choose destination - interactive or AI
+	std::string destinationTerritory;
+	
+	if (ctx.interactiveMode) {
+		// Interactive: ask Fremen player where to go
+		if (ctx.logger) {
+			ctx.logger->logDebug("=== FREMEN WORM RIDING ===");
+			ctx.logger->logDebug("Choose destination territory for " + std::to_string(fremenUnitsHere) + " units");
+			ctx.logger->logDebug("Valid territories (not in storm):");
+		}
+		
+		// Build list of valid destination territories (only restriction: not in storm)
+		std::vector<std::string> validDests;
+		const auto& allTerritories = ctx.map.getTerritories();
+		for (const auto& terr : allTerritories) {
+			// Can't land in storm
+			bool inStorm = false;
+			for (int sectorNum : terr.sectors) {
+				if (sectorNum == ctx.stormSector) {
+					inStorm = true;
+					break;
+				}
+			}
+			if (inStorm) continue;
+			
+			validDests.push_back(terr.name);
+		}
+		
+		// Show options
+		if (ctx.logger) {
+			for (size_t i = 0; i < validDests.size(); ++i) {
+				ctx.logger->logDebug(std::to_string(i) + ". " + validDests[i]);
+			}
+		}
+		
+		// Get player choice
+		bool validChoice = false;
+		while (!validChoice) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("Enter territory number or name:");
+			}
+			std::cout << "> ";
+			std::getline(std::cin, destinationTerritory);
+			
+			// Check if it's a number
+			try {
+				size_t idx = std::stoi(destinationTerritory);
+				if (idx < validDests.size()) {
+					destinationTerritory = validDests[idx];
+					validChoice = true;
+				} else {
+					if (ctx.logger) {
+						ctx.logger->logDebug("[ERROR] Invalid index. Try again.");
+					}
+				}
+			} catch (...) {
+				// Not a number, treat as territory name
+				for (const auto& validDest : validDests) {
+					if (validDest == destinationTerritory) {
+						validChoice = true;
+						break;
+					}
+				}
+				
+				if (!validChoice) {
+					if (ctx.logger) {
+						ctx.logger->logDebug("[ERROR] Territory not in valid list. Try again.");
+					}
+				}
+			}
+		}
+	} else {
+		// AI: choose first valid territory
+		std::vector<std::string> validDests;
+		const auto& allTerritories = ctx.map.getTerritories();
+		for (const auto& terr : allTerritories) {
+			bool inStorm = false;
+			for (int sectorNum : terr.sectors) {
+				if (sectorNum == ctx.stormSector) {
+					inStorm = true;
+					break;
+				}
+			}
+			if (inStorm) continue;
+			
+			validDests.push_back(terr.name);
+		}
+		
+		if (!validDests.empty()) {
+			destinationTerritory = validDests[0];
+		}
+	}
+
+	// Place units at destination
+	if (!destinationTerritory.empty()) {
+		// Deploy to chosen territory
+		ctx.map.addUnitsToTerritory(destinationTerritory, fremenIndex, fremenUnitsHere, 0);
+		if (ctx.logger) {
+			ctx.logger->logDebug("Fremen units deployed to " + destinationTerritory + " via worm");
+		}
+	}
+
+	return true;  // Fremen units were evacuated
 }
 
 std::vector<std::string> FremenAbility::getValidDeploymentTerritories(PhaseContext& ctx) const {

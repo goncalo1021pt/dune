@@ -99,6 +99,12 @@ public:
 	virtual bool survivesWorm() const;
 	// Does this faction lose only half forces in a storm? (Fremen only)
 	virtual bool hasReducedStormLosses() const;
+	// Can this faction's units ride a sandworm to relocate? (Fremen only)
+	virtual bool canRideWorm() const;
+	// Called when a worm hits a territory containing this faction's units.
+	// Allows the faction to move units before they're destroyed.
+	// Return true if the faction moved units (Fremen), false otherwise.
+	virtual bool onWormHitsTerritory(PhaseContext& ctx, const std::string& territoryName);
 
 	// --- Victory condition hooks ---
 	// Check faction-specific special victory condition.

@@ -22,6 +22,8 @@ public:
 	// --- Storm/Spice Blow hooks ---
 	bool survivesWorm() const override;
 	bool hasReducedStormLosses() const override;
+	bool canRideWorm() const override;
+	bool onWormHitsTerritory(PhaseContext& ctx, const std::string& territoryName) override;
 
 	// --- Initialization ---
 	void setupAtStart(Player* player) override;

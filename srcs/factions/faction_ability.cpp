@@ -43,6 +43,8 @@ bool FactionAbility::keepsAllTraitorCards() const { return false; }
 
 bool FactionAbility::survivesWorm() const { return false; }
 bool FactionAbility::hasReducedStormLosses() const { return false; }
+bool FactionAbility::canRideWorm() const { return false; }
+bool FactionAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& territoryName) { (void)ctx; (void)territoryName; return false; }
 
 bool FactionAbility::checkSpecialVictory(PhaseContext& ctx) const { (void)ctx; return false; }
 
