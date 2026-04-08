@@ -3,6 +3,8 @@
 #include "phases/phase_context.hpp"
 #include "cards/treachery_deck.hpp"
 #include "map.hpp"
+#include "events/event.hpp"
+#include "logger/event_logger.hpp"
 
 std::string HarkonnenAbility::getFactionName() const {
 	return "Harkonnen";
@@ -21,7 +23,7 @@ bool HarkonnenAbility::keepsAllTraitorCards() const {
 }
 
 void HarkonnenAbility::onCardWonAtAuction(PhaseContext& ctx) {
-	// Find Harkonnen player
+	// Find Harkonnen player (the one calling this will be the winning bidder, but we verify)
 	int harkonnenIndex = -1;
 	for (size_t i = 0; i < ctx.players.size(); ++i) {
 		if (ctx.players[i]->getFactionAbility()->getFactionName() == "Harkonnen") {
@@ -33,11 +35,28 @@ void HarkonnenAbility::onCardWonAtAuction(PhaseContext& ctx) {
 	if (harkonnenIndex < 0) return;
 	
 	Player* harkonnen = ctx.players[harkonnenIndex];
+	int currentHandSize = harkonnen->getTreacheryCards().size();
 	
-	// Draw a bonus card if under limit
-	if ((int)harkonnen->getTreacheryCards().size() < getMaxTreacheryCards()) {
+	// Draw a bonus card only if not already at max
+	// Rule: "unless you are at 7 cards, because you can never have more than 8 total"
+	// This means: if current hand is < 8, draw bonus (bringing it to min 1, max 8)
+	if (currentHandSize < getMaxTreacheryCards()) {
 		treacheryCard bonusCard = ctx.treacheryDeck.drawCard();
 		harkonnen->addTreacheryCard(bonusCard.name);
+		
+		if (ctx.logger) {
+			Event e(EventType::BID_PLACED,
+				"[Harkonnen bonus] " + bonusCard.name + " drawn (now " + std::to_string(harkonnen->getTreacheryCards().size()) + "/8 cards)",
+				ctx.turnNumber, "BIDDING");
+			e.playerFaction = "Harkonnen";
+			ctx.logger->logEvent(e);
+		}
+	} else if (ctx.logger) {
+		Event e(EventType::BID_PLACED,
+			"[Harkonnen] Already at max 8 cards, no bonus",
+			ctx.turnNumber, "BIDDING");
+		e.playerFaction = "Harkonnen";
+		ctx.logger->logEvent(e);
 	}
 }
 
