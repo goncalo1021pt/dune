@@ -6,7 +6,6 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include <algorithm>
-#include <iostream>
 
 std::string HarkonnenAbility::getFactionName() const {
 	return "Harkonnen";
@@ -102,146 +101,58 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 	Player* harkonnen = ctx.players[harkonnenIndex];
 	Player* opponent = ctx.players[opponentIndex];
 	
-	// If Harkonnen has all own leaders killed, must return all captured leaders
-	if (hasAllOwnLeadersKilled(ctx)) {
-		returnAllCapturedLeaders(ctx);
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Harkonnen] All own leaders killed, must return all captured leaders");
-		}
-		return;
-	}
-	
-	// Get mutable reference to opponent's alive leaders
-	auto& opponentLeaders = opponent->getAliveLeadersMutable();
-	if (opponentLeaders.empty()) return;
-	
-	// Interactive choice: steal a leader or take 2 spice
-	if (ctx.interactiveMode) {
-		std::cout << "\n[Harkonnen] " << harkonnen->getFactionName() << " won battle against " 
-				  << opponent->getFactionName() << "!\n";
-		std::cout << "Choose an option:\n";
-		std::cout << "  0: No reward\n";
-		
-		// Display opponent's alive leaders
-		for (size_t i = 0; i < opponentLeaders.size(); ++i) {
-			std::cout << "  " << (i + 1) << ": Capture " << opponentLeaders[i].name 
-			          << " (power:" << opponentLeaders[i].power << ")\n";
-		}
-		std::cout << "Enter choice (0-" << opponentLeaders.size() << "): ";
-		
-		int choice;
-		std::cin >> choice;
-		
-		// No reward
-		if (choice == 0) {
-			if (ctx.logger) {
-				Event e(EventType::BATTLE_RESOLVED,
-					"[Harkonnen] Declines reward",
-					ctx.turnNumber, "BATTLE");
-				e.playerFaction = "Harkonnen";
-				ctx.logger->logEvent(e);
-			}
-			std::cout << "  No reward taken\n";
-		}
-		// Capture leader
-		else if (choice >= 1 && choice <= (int)opponentLeaders.size()) {
-			int leaderIdx = choice - 1;
-			Leader capturedLeader = opponentLeaders[leaderIdx];
-			
-			// Decision prompt: keep or kill for spice
-			std::cout << "\n[Captured Leader] " << capturedLeader.name << " (power:" << capturedLeader.power << ")\n";
-			std::cout << "What do you want to do?\n";
-			std::cout << "  0: Keep for later use in battle\n";
-			std::cout << "  1: Kill for 2 spice\n";
-			std::cout << "Enter choice (0-1): ";
-			
-			int keepOrKill;
-			std::cin >> keepOrKill;
-			
-			if (keepOrKill == 0) {
-				// Keep the leader
-				addCapturedLeader(capturedLeader);
-				opponentLeaders.erase(opponentLeaders.begin() + leaderIdx);
-				
-				if (ctx.logger) {
-					Event e(EventType::BATTLE_RESOLVED,
-						"[Harkonnen] Captured and keeps " + capturedLeader.name + " from " + opponent->getFactionName(),
-						ctx.turnNumber, "BATTLE");
-					e.playerFaction = "Harkonnen";
-					ctx.logger->logEvent(e);
-				}
-				std::cout << "  Kept: " << capturedLeader.name << " (stored for later use)\n";
-			} else {
-				// Kill for spice
-				harkonnen->addSpice(2);
-				opponentLeaders.erase(opponentLeaders.begin() + leaderIdx);
-				
-				if (ctx.logger) {
-					Event e(EventType::BATTLE_RESOLVED,
-						"[Harkonnen] Killed captured " + capturedLeader.name + " for 2 spice",
-						ctx.turnNumber, "BATTLE");
-					e.playerFaction = "Harkonnen";
-					e.spiceValue = 2;
-					ctx.logger->logEvent(e);
-				}
-				std::cout << "  Killed " << capturedLeader.name << " for 2 spice\n";
-			}
-		}
-	}
-	// Non-interactive: default to taking 2 spice
-	else {
+	// Get opponent's alive leaders
+	const auto& opponentLeaders = opponent->getAliveLeaders();
+	if (opponentLeaders.empty()) {
+		// No leaders to capture, default to 2 spice
 		harkonnen->addSpice(2);
 		if (ctx.logger) {
 			Event e(EventType::BATTLE_RESOLVED,
-				"[Harkonnen] Takes 2 spice (non-interactive mode)",
+				"[Harkonnen] Opponent has no leaders, takes 2 spice",
 				ctx.turnNumber, "BATTLE");
 			e.playerFaction = "Harkonnen";
 			e.spiceValue = 2;
 			ctx.logger->logEvent(e);
 		}
+		return;
 	}
-}
-
-std::vector<Leader> HarkonnenAbility::getCapturedLeaders() const {
-	return capturedLeaders;
-}
-
-void HarkonnenAbility::addCapturedLeader(const Leader& leader) {
-	capturedLeaders.push_back(leader);
-}
-
-void HarkonnenAbility::returnAllCapturedLeaders(PhaseContext& ctx) {
-	(void)ctx;  // Suppress unused parameter warning
 	
-	if (capturedLeaders.empty()) return;
+	// TODO: Interactive choice: capture a leader or take 2 spice
+	// For now, store leader index and take 2 spice as default
+	// When battle phase implements interactive choice, call:
+	//   harkonnen->getFactionAbility()->addCapturedLeader(leaderIndex);
 	
-	// TODO: Properly return captured leaders to their original factions
-	// For now, they're just cleared from Harkonnen's captured list
-	// This will be properly implemented when Tleilaxu tanks system is added
-	
+	harkonnen->addSpice(2);
 	if (ctx.logger) {
-		Event e(EventType::LEADER_KILLED,
-			"[Harkonnen] Must return " + std::to_string(capturedLeaders.size()) + " captured leaders (all own leaders dead)",
-			ctx.turnNumber, "");
+		Event e(EventType::BATTLE_RESOLVED,
+			"[Harkonnen] Takes 2 spice from battle victory",
+			ctx.turnNumber, "BATTLE");
 		e.playerFaction = "Harkonnen";
+		e.spiceValue = 2;
 		ctx.logger->logEvent(e);
 	}
-	
-	capturedLeaders.clear();
 }
 
-bool HarkonnenAbility::hasAllOwnLeadersKilled(PhaseContext& ctx) const {
-	// Find Harkonnen player
-	int harkonnenIndex = -1;
-	for (size_t i = 0; i < ctx.players.size(); ++i) {
-		if (ctx.players[i]->getFactionAbility()->getFactionName() == "Harkonnen") {
-			harkonnenIndex = i;
-			break;
-		}
+// --- Captured Leaders management ---
+const std::vector<int>& HarkonnenAbility::getCapturedLeaders() const {
+	return capturedLeaderIndices;
+}
+
+void HarkonnenAbility::addCapturedLeader(int leaderIndex) {
+	capturedLeaderIndices.push_back(leaderIndex);
+}
+
+void HarkonnenAbility::removeCapturedLeader(int leaderIndex) {
+	auto it = std::find(capturedLeaderIndices.begin(), capturedLeaderIndices.end(), leaderIndex);
+	if (it != capturedLeaderIndices.end()) {
+		capturedLeaderIndices.erase(it);
 	}
-	
-	if (harkonnenIndex < 0) return false;
-	
-	const auto& leaders = ctx.players[harkonnenIndex]->getAliveLeaders();
-	return leaders.empty();
+}
+
+void HarkonnenAbility::clearCapturedLeaders() {
+	capturedLeaderIndices.clear();
+}
+
+bool HarkonnenAbility::hasCapturedLeaders() const {
+	return !capturedLeaderIndices.empty();
 }

@@ -3,8 +3,11 @@
 
 Player::Player(int factionIdx, const std::string& factionName) 
 	: factionName(factionName), factionIndex(factionIdx), homeSectorIndex(factionIdx),
-	  spice(STARTING_SPICE), unitsReserve(STARTING_UNITS), eliteUnitsReserve(STARTING_SPECIAL_UNITS),
-	  unitsDeployed(0), unitsDestroyed(0), freeReviveModifier(1), aliveLeaders(), deadLeaders() {
+	  spice(STARTING_SPICE), 
+	  reserveUnits({STARTING_UNITS, STARTING_SPECIAL_UNITS}),
+	  deployedUnits({0, 0}),
+	  destroyedUnits({0, 0}),
+	  freeReviveModifier(1), aliveLeaders(), deadLeaders() {
 }
 
 Player::~Player() {
@@ -39,77 +42,87 @@ void Player::setSpice(int amount) {
 void Player::deployUnits(int count) {
 	if (count < 0) 
 		return;
-	int canDeploy = std::min(count, unitsReserve);
-	unitsReserve -= canDeploy;
-	unitsDeployed += canDeploy;
+	int canDeploy = std::min(count, reserveUnits.normal);
+	reserveUnits.normal -= canDeploy;
+	deployedUnits.normal += canDeploy;
 }
 
 void Player::recallUnits(int count) {
 	if (count < 0) 
 		return;
-	int canRecall = std::min(count, unitsDeployed);
-	unitsDeployed -= canRecall;
-	unitsReserve += canRecall;
+	int canRecall = std::min(count, deployedUnits.normal);
+	deployedUnits.normal -= canRecall;
+	reserveUnits.normal += canRecall;
 }
 
 void Player::destroyUnits(int count) {
 	if (count < 0) 
 		return;
-	int aliveUnits = unitsReserve + unitsDeployed;
+	int aliveUnits = reserveUnits.normal + deployedUnits.normal;
 	int canDestroy = std::min(count, aliveUnits);
 	
-	int destroyDeployed = std::min(canDestroy, unitsDeployed);
+	// Destroy deployed first, then reserve
+	int destroyDeployed = std::min(canDestroy, deployedUnits.normal);
 	int destroyReserve = canDestroy - destroyDeployed;
 	
-	unitsDeployed -= destroyDeployed;
-	unitsReserve -= destroyReserve;
-	unitsDestroyed += canDestroy;
+	deployedUnits.normal -= destroyDeployed;
+	reserveUnits.normal -= destroyReserve;
+	destroyedUnits.normal += canDestroy;
 }
 
 void Player::reviveUnits(int count) {
 	if (count < 0) 
 		return;
-	int canRevive = std::min(count, unitsDestroyed);
-	unitsDestroyed -= canRevive;
-	unitsReserve += canRevive;
+	int canRevive = std::min(count, destroyedUnits.normal);
+	destroyedUnits.normal -= canRevive;
+	reserveUnits.normal += canRevive;
 }
 
 void Player::deployEliteUnits(int count) {
 	if (count < 0) 
 		return;
-	int canDeploy = std::min(count, eliteUnitsReserve);
-	eliteUnitsReserve -= canDeploy;
-	// Elite units count as deployed, but stored separately
+	int canDeploy = std::min(count, reserveUnits.elite);
+	reserveUnits.elite -= canDeploy;
+	deployedUnits.elite += canDeploy;
 }
 
 void Player::recallEliteUnits(int count) {
 	if (count < 0) 
 		return;
-	eliteUnitsReserve += count;
+	int canRecall = std::min(count, deployedUnits.elite);
+	deployedUnits.elite -= canRecall;
+	reserveUnits.elite += canRecall;
 }
 
 void Player::destroyEliteUnits(int count) {
 	if (count < 0) 
 		return;
-	int canDestroy = std::min(count, eliteUnitsReserve);
-	eliteUnitsReserve -= canDestroy;
-	unitsDestroyed += canDestroy;
+	int aliveElite = reserveUnits.elite + deployedUnits.elite;
+	int canDestroy = std::min(count, aliveElite);
+	
+	// Destroy deployed first, then reserve
+	int destroyDeployed = std::min(canDestroy, deployedUnits.elite);
+	int destroyReserve = canDestroy - destroyDeployed;
+	
+	deployedUnits.elite -= destroyDeployed;
+	reserveUnits.elite -= destroyReserve;
+	destroyedUnits.elite += canDestroy;
 }
 
 void Player::reviveEliteUnits(int count) {
 	if (count < 0) 
 		return;
-	int canRevive = std::min(count, unitsDestroyed);
-	unitsDestroyed -= canRevive;
-	eliteUnitsReserve += canRevive;
+	int canRevive = std::min(count, destroyedUnits.elite);
+	destroyedUnits.elite -= canRevive;
+	reserveUnits.elite += canRevive;
 }
 
 void Player::setUnitsReserve(int amount) {
-	unitsReserve = std::max(0, amount);
+	reserveUnits.normal = std::max(0, amount);
 }
 
 void Player::setEliteUnitsReserve(int amount) {
-	eliteUnitsReserve = std::max(0, amount);
+	reserveUnits.elite = std::max(0, amount);
 }
 
 void Player::setFreeReviveModifier(int modifier) {
@@ -155,23 +168,31 @@ int Player::getSpice() const {
 }
 
 int Player::getUnitsReserve() const { 
-	return unitsReserve; 
+	return reserveUnits.normal; 
 }
 
 int Player::getEliteUnitsReserve() const { 
-	return eliteUnitsReserve; 
+	return reserveUnits.elite; 
 }
 
 int Player::getUnitsDeployed() const { 
-	return unitsDeployed; 
+	return deployedUnits.normal; 
+}
+
+int Player::getEliteUnitsDeployed() const { 
+	return deployedUnits.elite; 
 }
 
 int Player::getUnitsDestroyed() const { 
-	return unitsDestroyed; 
+	return destroyedUnits.normal; 
+}
+
+int Player::getEliteUnitsDestroyed() const { 
+	return destroyedUnits.elite; 
 }
 
 int Player::getTotalUnits() const { 
-	return unitsReserve + unitsDeployed; 
+	return reserveUnits.total() + deployedUnits.total(); 
 }
 
 int Player::getFreeRevivesPerTurn() const {

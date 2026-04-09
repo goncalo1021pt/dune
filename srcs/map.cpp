@@ -1,6 +1,7 @@
 #include "map.hpp"
 #include <algorithm>
 #include <set>
+#include <utility>
 
 GameMap::GameMap() {
 }
@@ -243,6 +244,21 @@ int GameMap::getEliteUnitsInTerritorySector(const std::string& territoryName, in
 		}
 	}
 	return 0;
+}
+
+std::pair<int, int> GameMap::getUnitBreakdown(const std::string& territoryName, int factionIndex) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return {0, 0};
+
+	int normalUnits = 0;
+	int eliteUnits = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex) {
+			normalUnits += stack.normal_units;
+			eliteUnits += stack.elite_units;
+		}
+	}
+	return {normalUnits, eliteUnits};
 }
 
 // =============================================================================

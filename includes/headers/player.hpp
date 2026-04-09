@@ -10,6 +10,14 @@
 // Forward declarations
 enum class faction;
 
+// Unit count tracking (normal + elite)
+struct UnitCount {
+	int normal = 0;
+	int elite = 0;
+	
+	int total() const { return normal + elite; }
+};
+
 class Player {
 	private:
 		std::string factionName;
@@ -18,10 +26,9 @@ class Player {
 
 		int spice;
 
-		int unitsReserve;
-		int eliteUnitsReserve;
-		int unitsDeployed;
-		int unitsDestroyed;
+		UnitCount reserveUnits;
+		UnitCount deployedUnits;
+		UnitCount destroyedUnits;
 		int freeReviveModifier;
 
 		std::vector<Leader> aliveLeaders;
@@ -50,7 +57,9 @@ class Player {
 		int getUnitsReserve() const;
 		int getEliteUnitsReserve() const;
 		int getUnitsDeployed() const;
+		int getEliteUnitsDeployed() const;
 		int getUnitsDestroyed() const;
+		int getEliteUnitsDestroyed() const;
 		int getTotalUnits() const;
 		int getFreeRevivesPerTurn() const;
 

@@ -55,10 +55,11 @@ InteractiveInput::DeploymentChoice InteractiveInput::getDeploymentDecision(
 		}
 	} while (!validTerritorySelected);
 
-	std::cout << "  How many units to deploy? (0-" << player->getUnitsReserve() << "): ";
+	std::cout << "  How many units to deploy? (0-" << (player->getUnitsReserve() + player->getEliteUnitsReserve()) << "): ";
 	int totalUnits = 0;
 	std::cin >> totalUnits;
-	totalUnits = std::max(0, std::min(totalUnits, player->getUnitsReserve()));
+	int maxAvailable = player->getUnitsReserve() + player->getEliteUnitsReserve();
+	totalUnits = std::max(0, std::min(totalUnits, maxAvailable));
 
 	int eliteUnits = 0;
 	int normalUnits = totalUnits;
