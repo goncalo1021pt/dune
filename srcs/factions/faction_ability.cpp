@@ -20,7 +20,11 @@ std::vector<std::string> FactionAbility::getValidDeploymentTerritories(PhaseCont
 
 bool FactionAbility::canCrossShip() const { return false; }
 bool FactionAbility::canShipToReserves() const { return false; }
-void FactionAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex) { (void)ctx; (void)shippingFactionIndex; }
+void FactionAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount) {
+	(void)ctx;
+	(void)shippingFactionIndex;
+	(void)amount;
+}
 
 int FactionAbility::getBaseMovementRange() const { return 1; }
 bool FactionAbility::canMoveOutOfTurnOrder() const { return false; }

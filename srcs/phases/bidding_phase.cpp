@@ -130,7 +130,8 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 
 	int currentBid = 0;
 	int highestBidder = -1;
-	int currentPlayerIndex = startingPlayerIndex;
+	// Set cursor one slot before starter so first getNextActivePlayer() returns starter.
+	int currentPlayerIndex = (startingPlayerIndex - 1 + static_cast<int>(view.players.size())) % static_cast<int>(view.players.size());
 	bool anyoneRaised = false;
 	int playersOfferedThisRound = 0;
 	int totalEligible = activeBidders.size();

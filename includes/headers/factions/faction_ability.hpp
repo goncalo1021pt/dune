@@ -46,8 +46,9 @@ public:
 	virtual bool canCrossShip() const;
 	// Can this faction ship units back to reserves? (Guild only)
 	virtual bool canShipToReserves() const;
-	// Called when ANY other faction completes a shipment (BG piggyback hook)
-	virtual void onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex);
+	// Called when another faction ships from reserve to planet and pays spice.
+	// Guild overrides to collect this payment instead of the bank.
+	virtual void onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount);
 
 	// --- Movement Phase hooks ---
 	// Base movement range (before ornithopter bonus is applied)

@@ -165,6 +165,13 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	}
 	
 	player->removeSpice(cost);
+	// Notify factions that a shipment payment was made (Guild hook).
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
+		if (ability) {
+			ability->onOtherFactionShipped(ctx, player->getFactionIndex(), cost);
+		}
+	}
 	player->deployUnits(totalUnits);
 	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(),
 	                              normalUnits, eliteUnits, effectiveSector);
