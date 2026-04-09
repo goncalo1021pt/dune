@@ -260,19 +260,6 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 		}
 	} while (!validToSelected);
 	
-	// Ask how many units to move
-	std::cout << "  How many normal units to move? (0+): ";
-	int normalUnits = 0;
-	std::cin >> normalUnits;
-	normalUnits = std::max(0, normalUnits);
-	
-	int eliteUnits = 0;
-	if (player->getEliteUnitsReserve() > 0) {
-		std::cout << "  How many elite units to move? (0-" << player->getEliteUnitsReserve() << "): ";
-		std::cin >> eliteUnits;
-		eliteUnits = std::max(0, std::min(eliteUnits, player->getEliteUnitsReserve()));
-	}
-	
 	// Ask for source sector (if multi-sector territory)
 	const territory* fromTerr = ctx.map.getTerritory(fromTerritory);
 	int fromSector = -1;
@@ -314,6 +301,31 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 		}
 	} else if (fromTerr && fromTerr->sectors.size() == 1) {
 		fromSector = fromTerr->sectors[0];
+	}
+	
+	// Get available units in source sector to validate movement
+	int unitsInSourceSector = ctx.map.getUnitsInTerritorySector(fromTerritory, player->getFactionIndex(), fromSector);
+	int eliteInSourceSector = ctx.map.getEliteUnitsInTerritorySector(fromTerritory, player->getFactionIndex(), fromSector);
+	int normalInSourceSector = unitsInSourceSector - eliteInSourceSector;
+	
+	// Ask how many total units to move from this sector
+	std::cout << "\n  Total units in this sector: " << unitsInSourceSector << " (" 
+		<< normalInSourceSector << " normal, " << eliteInSourceSector << " elite)" << std::endl;
+	std::cout << "  How many units to move? (0-" << unitsInSourceSector << "): ";
+	int totalUnits = 0;
+	std::cin >> totalUnits;
+	totalUnits = std::max(0, std::min(totalUnits, unitsInSourceSector));
+	
+	int normalUnits = totalUnits;
+	int eliteUnits = 0;
+	
+	// If there are elite units in the stack, ask how many should be elite
+	if (eliteInSourceSector > 0 && totalUnits > 0) {
+		int maxEliteForMovement = std::min(totalUnits, eliteInSourceSector);
+		std::cout << "  How many elite among these " << totalUnits << "? (0-" << maxEliteForMovement << "): ";
+		std::cin >> eliteUnits;
+		eliteUnits = std::max(0, std::min(eliteUnits, maxEliteForMovement));
+		normalUnits = totalUnits - eliteUnits;
 	}
 	
 	// Ask for destination sector (if multi-sector territory)

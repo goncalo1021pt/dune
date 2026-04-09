@@ -233,6 +233,18 @@ int GameMap::getUnitsInTerritorySector(const std::string& territoryName, int fac
 	return 0;
 }
 
+int GameMap::getEliteUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex && stack.sector == sector) {
+			return stack.elite_units;
+		}
+	}
+	return 0;
+}
+
 // =============================================================================
 // Spice operations — sector-aware
 // =============================================================================
