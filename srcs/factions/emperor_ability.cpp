@@ -56,17 +56,11 @@ void EmperorAbility::placeStartingForces(PhaseContext& ctx) {
 	
 	Player* emperor = ctx.players[emperorIndex];
 	
-	// Emperor starts with Sardukar (elite) soldiers outside the planet
-	// Convert 20 normal units to 20 elite units (Sardukar) in reserves
-	// Emperor does NOT deploy any units initially - they stay in reserves
-	
-	// Remove the 20 normal units that all players start with
-	emperor->destroyUnits(20);
-	
-	// Add 20 elite units (Sardukar) to reserves
-	emperor->reviveEliteUnits(20);
+	// Emperor starts with 15 normal units + 5 Sardukar (elite) soldiers outside the planet (not deployed)
+	emperor->setUnitsReserve(15);
+	emperor->setEliteUnitsReserve(5);
 	
 	if (ctx.logger) {
-		ctx.logger->logDebug("[Emperor] Starts with 20 Sardukar elite soldiers in reserves (outside planet)");
+		ctx.logger->logDebug("[Emperor] Starts with 15 normal units + 5 Sardukar elite soldiers in reserves (outside planet)");
 	}
 }

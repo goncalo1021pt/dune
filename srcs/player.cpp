@@ -104,6 +104,14 @@ void Player::reviveEliteUnits(int count) {
 	eliteUnitsReserve += canRevive;
 }
 
+void Player::setUnitsReserve(int amount) {
+	unitsReserve = std::max(0, amount);
+}
+
+void Player::setEliteUnitsReserve(int amount) {
+	eliteUnitsReserve = std::max(0, amount);
+}
+
 void Player::setFreeReviveModifier(int modifier) {
 	freeReviveModifier = modifier;
 }

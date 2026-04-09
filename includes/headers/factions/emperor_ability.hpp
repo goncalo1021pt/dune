@@ -13,6 +13,6 @@ public:
 	void setupAtStart(Player* player) override;
 	
 	// Emperor starts outside the planet with Sardukar (elite) soldiers
-	// All 20 units are elite (not normal) and remain in reserves until deployed
+	// All 5 elite units are NOT deployed initially and remain in reserves
 	void placeStartingForces(PhaseContext& ctx) override;
 };

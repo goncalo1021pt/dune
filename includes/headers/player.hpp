@@ -62,10 +62,12 @@ class Player {
 		void recallUnits(int count);
 		void destroyUnits(int count);
 		void reviveUnits(int count);
+		void setUnitsReserve(int amount);  // Set reserve units directly (for initialization)
 		void deployEliteUnits(int count);
 		void recallEliteUnits(int count);
 		void destroyEliteUnits(int count);
-		void reviveEliteUnits(int count);	
+		void reviveEliteUnits(int count);
+		void setEliteUnitsReserve(int amount);  // Set elite reserve units directly (for initialization)
 		void setFreeReviveModifier(int modifier);
 
 		// Card management
