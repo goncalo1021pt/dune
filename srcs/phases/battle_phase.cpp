@@ -151,6 +151,17 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 
 	int selectedLeaderIdx = selectLeaderForBattle(ctx, attackerIdx, aliveLeaders.size());
 	if (selectedLeaderIdx < 0) return;
+
+	// For now, pick first defender (in multi-defender scenarios, could be more complex)
+	int defenderIdx = defenderIndices[0];
+	Player* defender = view.players[defenderIdx];
+
+	const std::string attackerFaction = attacker->getFactionName();
+	const std::string defenderFaction = defender->getFactionName();
+	const int attackerEliteStrength =
+		(attackerFaction == "Emperor" && defenderFaction == "Fremen") ? 1 : 2;
+	const int defenderEliteStrength =
+		(defenderFaction == "Emperor" && attackerFaction == "Fremen") ? 1 : 2;
 	
 	// Mark leader as battled (no const_cast needed)
 	attacker->markLeaderBattled(selectedLeaderIdx);
@@ -158,18 +169,21 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	
 	// Get attacker's wheel value (units to commit/lose)
 	int attackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
-	int wheelValue = getBattleWheelChoice(ctx, attackerIdx, attackerUnits);
+	int wheelValue = getBattleWheelChoice(ctx, attackerIdx, attackerUnits, territoryName, attackerEliteStrength);
+	
+	// Calculate attacker's actual unit strength (elite units count as 2x)
+	auto [normalUnits, eliteUnits] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+	int unitStrength = calculateUnitStrength(wheelValue, normalUnits, eliteUnits, attackerEliteStrength);
 
 	// Calculate attacker's battle value
-	int attackerValue = wheelValue + attackerLeader.power;
+	int attackerValue = unitStrength + attackerLeader.power;
 	if (ctx.logger) {
-		ctx.logger->logDebug(attacker->getFactionName() + " battle value: " + std::to_string(wheelValue) 
-		          + " (wheel) + " + std::to_string(attackerLeader.power) + " (leader) = " + std::to_string(attackerValue));
+		ctx.logger->logDebug(attacker->getFactionName() + " battle value: " + std::to_string(unitStrength) 
+		          + " (units: " + std::to_string(wheelValue) + " committed from " + std::to_string(normalUnits) 
+		          + "N+" + std::to_string(eliteUnits) + "E) + " + std::to_string(attackerLeader.power) 
+		          + " (leader) = " + std::to_string(attackerValue));
 	}
 
-	// For now, pick first defender (in multi-defender scenarios, could be more complex)
-	int defenderIdx = defenderIndices[0];
-	Player* defender = view.players[defenderIdx];
 	const auto& defenderLeaders = defender->getAliveLeaders();
 
 	if (defenderLeaders.empty()) {
@@ -177,10 +191,19 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logDebug(defender->getFactionName() + " has no alive leaders. "
 		          + attacker->getFactionName() + " wins by default.");
 		}
-		// Attacker loses wheelValue units, defender loses all units
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
-		int defenderAllUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defenderAllUnits, 0);
+		
+		// Attacker survives with remaining strength after dialing
+		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
+		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
+		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
+		
+		// Attacker loses dialed strength worth of units, defender loses all units
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
+		
+		// Get defender's breakdown for full removal
+		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
 		
 		if (ctx.logger) {
 			Event e(EventType::BATTLE_RESOLVED,
@@ -203,12 +226,18 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	
 	// Get defender's wheel value
 	int defenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
-	int defWheelValue = getBattleWheelChoice(ctx, defenderIdx, defenderUnits);
+	int defWheelValue = getBattleWheelChoice(ctx, defenderIdx, defenderUnits, territoryName, defenderEliteStrength);
+	
+	// Calculate defender's actual unit strength (elite units count as 2x)
+	auto [defNormalUnits, defEliteUnits] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+	int defUnitStrength = calculateUnitStrength(defWheelValue, defNormalUnits, defEliteUnits, defenderEliteStrength);
 
-	int defenderValue = defWheelValue + defenderLeader.power;
+	int defenderValue = defUnitStrength + defenderLeader.power;
 	if (ctx.logger) {
-		ctx.logger->logDebug(defender->getFactionName() + " battle value: " + std::to_string(defWheelValue) 
-		          + " (wheel) + " + std::to_string(defenderLeader.power) + " (leader) = " + std::to_string(defenderValue));
+		ctx.logger->logDebug(defender->getFactionName() + " battle value: " + std::to_string(defUnitStrength) 
+		          + " (units: " + std::to_string(defWheelValue) + " committed from " + std::to_string(defNormalUnits) 
+		          + "N+" + std::to_string(defEliteUnits) + "E) + " + std::to_string(defenderLeader.power) 
+		          + " (leader) = " + std::to_string(defenderValue));
 	}
 
 	// Determine winner (attacker wins ties)
@@ -216,10 +245,18 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: " + attacker->getFactionName() + " wins!");
 		}
-		// Attacker loses wheelValue units, defender loses all units
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
-		int allDefenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, allDefenderUnits, 0);
+		
+		// Winner (attacker) keeps totalStrength - dialedStrength
+		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		
+		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
+		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
+		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
+		
+		// Attacker loses casualties, defender loses all units
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
 		
 		if (ctx.logger) {
 			Event e(EventType::BATTLE_RESOLVED,
@@ -237,10 +274,18 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: " + defender->getFactionName() + " wins!");
 		}
-		// Defender wins: attacker loses all units, defender loses defWheelValue
-		int allAttackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, allAttackerUnits, 0);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defWheelValue, 0);
+		
+		// Calculate unit breakdowns for removal
+		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		
+		int totalDefenderStrength = calculateUnitStrength(defenderUnits, defNormalUnits, defEliteUnits, defenderEliteStrength);
+		int defenderRemainingStrength = std::max(0, totalDefenderStrength - defUnitStrength);
+		auto [defNKilled, defEKilled] = askCasualtyDistribution(ctx, defenderIdx, defenderRemainingStrength, defN, defE, defenderEliteStrength);
+		
+		// Defender wins: attacker loses all units, defender loses casualties
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aN, aE);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defNKilled, defEKilled);
 		
 		if (ctx.logger) {
 			Event e(EventType::BATTLE_RESOLVED,
@@ -258,10 +303,18 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: Tie! " + attacker->getFactionName() + " wins (attacker advantage).");
 		}
-		// Attacker loses wheelValue, defender loses all units
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, wheelValue, 0);
-		int allDefenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, allDefenderUnits, 0);
+		
+		// Winner (attacker in tie) keeps totalStrength - dialedStrength
+		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		
+		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
+		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
+		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
+		
+		// Attacker loses casualties, defender loses all units
+		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
+		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
 		
 		if (ctx.logger) {
 			Event e(EventType::BATTLE_RESOLVED,
@@ -277,24 +330,66 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	}
 }
 
-int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int maxUnits) {
+// Helper: Calculate actual unit strength based on commitment and unit type mix
+// Elite units count as 2x strength, normal units as 1x
+// When committing X units from (N normal, E elite), commit elite first then normal
+int BattlePhase::calculateUnitStrength(int commitUnits, int normalAvailable, int eliteAvailable, int eliteStrength) {
+	// Commit elite units first (they're worth more)
+	int eliteCommitted = std::min(commitUnits, eliteAvailable);
+	int normalCommitted = std::min(commitUnits - eliteCommitted, normalAvailable);
+	
+	// Strength = normal*1 + elite*eliteStrength
+	return normalCommitted + (eliteCommitted * eliteStrength);
+}
+
+// Helper: Convert desired strength to unit count
+// Elite units count as 2x, normal as 1x. Commits elite first (greedy).
+int BattlePhase::convertStrengthToUnitCount(int desiredStrength, int normalAvailable, int eliteAvailable, int eliteStrength) {
+	if (eliteStrength <= 1) {
+		return std::min(desiredStrength, normalAvailable + eliteAvailable);
+	}
+
+	// Commit elite units first to reach strength
+	int eliteToCommit = std::min(desiredStrength / eliteStrength, eliteAvailable);
+	int strengthFromElite = eliteToCommit * eliteStrength;
+	int remainingStrength = desiredStrength - strengthFromElite;
+	
+	// Fill remaining with normal units
+	int normalToCommit = std::min(remainingStrength, normalAvailable);
+	
+	// Total units committed
+	return eliteToCommit + normalToCommit;
+}
+
+int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int maxUnits,
+									  const std::string& territoryName, int eliteStrength) {
 	auto view = ctx.getBattleView();
 	Player* player = view.players[playerIndex];
 	
+	// Calculate max strength available
+	int maxStrength = 0;
+	int normalAvailable = 0, eliteAvailable = 0;
+	if (!territoryName.empty()) {
+		auto [n, e] = view.map.getUnitBreakdown(territoryName, playerIndex);
+		normalAvailable = n;
+		eliteAvailable = e;
+		maxStrength = calculateUnitStrength(maxUnits, n, e, eliteStrength);
+	}
+	
 	if (view.interactiveMode) {
 		if (ctx.logger) {
-			ctx.logger->logDebug(player->getFactionName() + ", enter battle wheel value (0-" + std::to_string(maxUnits) + "): ");
+			ctx.logger->logDebug(player->getFactionName() + ", enter battle strength (0-" + std::to_string(maxStrength) + "): ");
 		}
 		
 		int choice = -1;
-		while (choice < 0 || choice > maxUnits) {
+		while (choice < 0 || choice > maxStrength) {
 			std::string input;
 			std::getline(std::cin, input);
 			try {
 				choice = std::stoi(input);
-				if (choice < 0 || choice > maxUnits) {
+				if (choice < 0 || choice > maxStrength) {
 					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid. Must be 0-" + std::to_string(maxUnits) + ": ");
+						ctx.logger->logDebug("Invalid. Must be 0-" + std::to_string(maxStrength) + ": ");
 					}
 					choice = -1;
 				}
@@ -305,14 +400,95 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 				choice = -1;
 			}
 		}
-		return choice;
+		
+		// Convert strength to unit count for removal calculation
+		return convertStrengthToUnitCount(choice, normalAvailable, eliteAvailable, eliteStrength);
 	} else {
-		// AI: random choice 0 to maxUnits
-		int choice = rand() % (maxUnits + 1);
+		// AI: random strength choice 0 to maxStrength
+		int strength = rand() % (maxStrength + 1);
 		if (ctx.logger) {
-			ctx.logger->logDebug(player->getFactionName() + " wheel value: " + std::to_string(choice));
+			ctx.logger->logDebug(player->getFactionName() + " battle strength: " + std::to_string(strength));
 		}
-		return choice;
+		return convertStrengthToUnitCount(strength, normalAvailable, eliteAvailable, eliteStrength);
+	}
+}
+
+// Ask how many elite units survive based on remaining strength.
+// Returns casualties as (normalKilled, eliteKilled).
+std::pair<int, int> BattlePhase::askCasualtyDistribution(PhaseContext& ctx, int playerIndex, int remainingStrength,
+	                                                     int normalAvailable, int eliteAvailable, int eliteStrength) {
+	auto view = ctx.getBattleView();
+	Player* player = view.players[playerIndex];
+	
+	int totalStrength = normalAvailable + (eliteAvailable * eliteStrength);
+
+	// No survivors -> everyone dies.
+	if (remainingStrength <= 0) {
+		return {normalAvailable, eliteAvailable};
+	}
+
+	// All survive.
+	if (remainingStrength >= totalStrength) {
+		return {0, 0};
+	}
+
+	// Feasible elite survivors satisfy:
+	// eliteSurvive*eliteStrength + normalSurvive = remainingStrength
+	// with 0<=eliteSurvive<=eliteAvailable and 0<=normalSurvive<=normalAvailable.
+	int minEliteSurvive = std::max(0, (remainingStrength - normalAvailable + eliteStrength - 1) / eliteStrength);
+	int maxEliteSurvive = std::min(eliteAvailable, remainingStrength / eliteStrength);
+
+	// Clamp to a safe feasible value if arithmetic corner-case happens.
+	if (minEliteSurvive > maxEliteSurvive) {
+		int eliteSurvive = std::max(0, std::min(eliteAvailable, remainingStrength / eliteStrength));
+		int normalSurvive = std::max(0, std::min(normalAvailable, remainingStrength - (eliteSurvive * eliteStrength)));
+		return {normalAvailable - normalSurvive, eliteAvailable - eliteSurvive};
+	}
+
+	// Deterministic case, no need to ask.
+	if (minEliteSurvive == maxEliteSurvive) {
+		int eliteSurvive = minEliteSurvive;
+		int normalSurvive = remainingStrength - (eliteSurvive * eliteStrength);
+		return {normalAvailable - normalSurvive, eliteAvailable - eliteSurvive};
+	}
+	
+	if (view.interactiveMode) {
+		if (ctx.logger) {
+			ctx.logger->logDebug(player->getFactionName() + " keeps " + std::to_string(remainingStrength) + " strength after battle.");
+			ctx.logger->logDebug("How many elite units survive? (" + std::to_string(minEliteSurvive) + "-" + std::to_string(maxEliteSurvive) + "): ");
+		}
+		
+		int eliteSurvive = -1;
+		while (eliteSurvive < minEliteSurvive || eliteSurvive > maxEliteSurvive) {
+			std::string input;
+			std::getline(std::cin, input);
+			try {
+				eliteSurvive = std::stoi(input);
+				if (eliteSurvive < minEliteSurvive || eliteSurvive > maxEliteSurvive) {
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid. Must be " + std::to_string(minEliteSurvive) + "-" + std::to_string(maxEliteSurvive) + ": ");
+					}
+					eliteSurvive = -1;
+				}
+			} catch (...) {
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid input. Try again: ");
+				}
+				eliteSurvive = -1;
+			}
+		}
+
+		int normalSurvive = remainingStrength - (eliteSurvive * eliteStrength);
+		int normalKilled = normalAvailable - normalSurvive;
+		int eliteKilled = eliteAvailable - eliteSurvive;
+		return {normalKilled, eliteKilled};
+	} else {
+		// AI: keep as many elite as possible among feasible survivor choices.
+		int eliteSurvive = maxEliteSurvive;
+		int normalSurvive = remainingStrength - (eliteSurvive * eliteStrength);
+		int normalKilled = normalAvailable - normalSurvive;
+		int eliteKilled = eliteAvailable - eliteSurvive;
+		return {normalKilled, eliteKilled};
 	}
 }
 
@@ -373,17 +549,3 @@ int BattlePhase::selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int a
 	}
 }
 
-std::vector<int> BattlePhase::getPlayersInTerritory(PhaseContext& ctx, const territory& territory) {
-	auto view = ctx.getBattleView();
-	std::vector<int> players;
-
-	for (size_t i = 0; i < view.players.size(); ++i) {
-		// Check if this player has units in the territory
-		int unitsPresent = view.map.getUnitsInTerritory(territory.name, i);
-		if (unitsPresent > 0) {
-			players.push_back(i);
-		}
-	}
-
-	return players;
-}

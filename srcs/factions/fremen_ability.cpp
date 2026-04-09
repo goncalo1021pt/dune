@@ -251,6 +251,7 @@ void FremenAbility::setupAtStart(Player* player) {
 	if (player == nullptr) 
         return;
 	player->setSpice(3);
+	player->setEliteUnitsReserve(3);  // Fremen start with 3 Fedaykin
 }
 
 void FremenAbility::placeStartingForces(PhaseContext& ctx) {
@@ -293,69 +294,90 @@ void FremenAbility::placeStartingForces(PhaseContext& ctx) {
 			ctx.logger->logDebug("  False Wall West: " + std::to_string(distribution[2]) + " units");
 		}
 	} else {
-		// Interactive mode: ask player for distribution
+		// Interactive mode: ask player for each territory distribution one by one with elite split
 		if (ctx.logger) {
 			ctx.logger->logDebug("PLAYER INPUT REQUIRED:");
-			ctx.logger->logDebug("Enter distribution for each territory (3 numbers separated by spaces)");
-			ctx.logger->logDebug("Must sum to exactly 10. Example: '5 3 2' or '4 3 3'");
+			ctx.logger->logDebug("Distribute starting units across each sietch, specifying normal and elite units.");
 		}
 		
-		bool valid = false;
-		while (!valid) {
-			std::cout << "> ";
+		int eliteRemaining = fremen->getEliteUnitsReserve();  // Track elite locally (3 Fedaykin)
+		
+		for (int i = 0; i < 3; ++i) {
+			int remaining = totalToAllocate;
+			for (int j = 0; j < i; ++j) {
+				remaining -= distribution[j];
+			}
 			
+			std::cout << "\n  Deploying to " << territories[i] << std::endl;
+			std::cout << "  Units remaining: " << remaining << std::endl;
+			
+			// Ask how many total units for this territory
+			std::cout << "  How many units to deploy here? (0-" << remaining << "): ";
+			int unitsForTerritory = 0;
 			std::string input;
-			std::getline(std::cin, input);
+			std::cin >> input;
 			
-			int t1, t2, t3;
 			try {
-				size_t pos1 = input.find(' ');
-				size_t pos2 = input.find(' ', pos1 + 1);
-				
-				if (pos1 == std::string::npos || pos2 == std::string::npos) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("[ERROR] Invalid format. Enter three numbers separated by spaces.");
-					}
-					continue;
-				}
-				
-				t1 = std::stoi(input.substr(0, pos1));
-				t2 = std::stoi(input.substr(pos1 + 1, pos2 - pos1 - 1));
-				t3 = std::stoi(input.substr(pos2 + 1));
-				
-				if (t1 < 0 || t2 < 0 || t3 < 0) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("[ERROR] Cannot have negative units. Try again.");
-					}
-					continue;
-				}
-				
-				if (t1 + t2 + t3 != totalToAllocate) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("[ERROR] Sum must equal 10. You entered: " + std::to_string(t1 + t2 + t3));
-					}
-					continue;
-				}
-				
-				distribution[0] = t1;
-				distribution[1] = t2;
-				distribution[2] = t3;
-				valid = true;
-				
+				unitsForTerritory = std::stoi(input);
+				unitsForTerritory = std::max(0, std::min(unitsForTerritory, remaining));
 			} catch (...) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("[ERROR] Invalid input. Please enter three numbers.");
+				unitsForTerritory = 0;
+			}
+			
+			distribution[i] = unitsForTerritory;
+			
+			// Ask how many elite among these units
+			int eliteForTerritory = 0;
+			if (unitsForTerritory > 0 && eliteRemaining > 0) {
+				int maxEliteHere = std::min(unitsForTerritory, eliteRemaining);
+				std::cout << "  How many elite (Fedaykin) among these " << unitsForTerritory << "? (0-" << maxEliteHere << "): ";
+				std::cin >> input;
+				
+				try {
+					eliteForTerritory = std::stoi(input);
+					eliteForTerritory = std::max(0, std::min(eliteForTerritory, maxEliteHere));
+				} catch (...) {
+					eliteForTerritory = 0;
 				}
+				
+				// Track elite allocation locally
+				eliteRemaining -= eliteForTerritory;
+			}
+			
+			if (ctx.logger) {
+				ctx.logger->logDebug("  " + territories[i] + ": " + std::to_string(unitsForTerritory) + 
+					" units (" + std::to_string(unitsForTerritory - eliteForTerritory) + " normal, " +
+					std::to_string(eliteForTerritory) + " elite)");
+			}
+			
+			// Deploy immediately to map with elite split
+			if (unitsForTerritory > 0) {
+				int normalUnits = unitsForTerritory - eliteForTerritory;
+				ctx.map.addUnitsToTerritory(territories[i], fremenIndex, normalUnits, eliteForTerritory, -1);
+				fremen->deployUnits(unitsForTerritory);
 			}
 		}
+		
+		// Set elite reserve to what's left undeployed
+		fremen->setEliteUnitsReserve(eliteRemaining);
 	}
 	
-	// Deploy units to chosen territories (sector -1 auto-selects first sector)
-	for (int i = 0; i < 3; ++i) {
-		if (distribution[i] > 0) {
-			ctx.map.addUnitsToTerritory(territories[i], fremenIndex, distribution[i], 0, -1);
-			fremen->deployUnits(distribution[i]);
+	// Deploy units for AI mode (interactive already deployed in loop above)
+	if (!ctx.interactiveMode) {
+		// AI: distribute 3 Fedaykin (1 per sietch)
+		int eliteDistribution[3] = {1, 1, 1};
+		
+		for (int i = 0; i < 3; ++i) {
+			if (distribution[i] > 0) {
+				int elite = std::min(eliteDistribution[i], distribution[i]);
+				int normal = distribution[i] - elite;
+				ctx.map.addUnitsToTerritory(territories[i], fremenIndex, normal, elite, -1);
+				fremen->deployUnits(distribution[i]);
+			}
 		}
+		
+		// Set elite reserve to 0 (all deployed)
+		fremen->setEliteUnitsReserve(0);
 	}
 	
 	if (ctx.logger) {

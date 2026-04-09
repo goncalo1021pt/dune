@@ -15,22 +15,22 @@ class BattlePhase : public Phase {
 		// Main battle resolution for a contested territory
 		void resolveBattle(PhaseContext& ctx, int attackerIdx, const std::string& territoryName);
 		
-		// Battle resolution for territory with N participants
-		void resolveBattlesInTerritory(PhaseContext& ctx, territory& territory);
-		
-		// Helper to get players with units in a territory
-		std::vector<int> getPlayersInTerritory(PhaseContext& ctx, const territory& territory);
-		
 		// Get player's battle wheel choice (0 to max units)
-		int getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int maxUnits);
+		int getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int maxUnits,
+		                         const std::string& territoryName = "", int eliteStrength = 2);
+		
+		// Calculate actual unit strength (elite units count as 2x)
+		int calculateUnitStrength(int commitUnits, int normalAvailable, int eliteAvailable, int eliteStrength = 2);
+		
+		// Convert strength value to unit count (inverse of calculateUnitStrength)
+		int convertStrengthToUnitCount(int desiredStrength, int normalAvailable, int eliteAvailable, int eliteStrength = 2);
+		
+		// Ask player how many elite units survive based on remaining strength
+		// Returns casualties as (normalKilled, eliteKilled)
+		std::pair<int, int> askCasualtyDistribution(PhaseContext& ctx, int playerIndex, int remainingStrength,
+		                                             int normalAvailable, int eliteAvailable, int eliteStrength = 2);
 		
 		// Select leader for battle (must have alive leader) - returns index into alive leaders
 		int selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int aliveLeaderCount);
 		
-		// Calculate total battle value (wheel + leader power + card effect)
-		int calculateBattleValue(int wheelValue, Leader* leader, int cardEffect);
-		
-		// Apply casualties to player
-		void applyCasualties(PhaseContext& ctx, int playerIndex, const std::string& territoryName, 
-		                     int casualtyCount, bool lost);
 };

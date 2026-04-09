@@ -90,6 +90,11 @@ class GameMap {
 		// Units for a faction in a specific sector only.
 		int getUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
 
+	// Get breakdown of unit types (for battle strength calculation)
+	// Returns pair of (normal units, elite units) in territory
+	std::pair<int, int> getUnitBreakdown(const std::string& territoryName, int factionIndex) const;
+		int getEliteUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
+
 		// ---------------------------------------------------------------
 		// Spice operations — sector-aware
 		// ---------------------------------------------------------------
