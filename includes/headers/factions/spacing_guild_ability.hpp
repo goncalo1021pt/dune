@@ -20,4 +20,7 @@ public:
 
 	// --- Movement Phase hooks ---
 	bool canMoveOutOfTurnOrder() const override;
+
+	// --- Victory condition hooks ---
+	bool checkSpecialVictory(PhaseContext& ctx) const override;
 };

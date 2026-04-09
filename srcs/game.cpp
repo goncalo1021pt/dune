@@ -389,7 +389,31 @@ void Game::runGame() {
 	}
 	
 	if (turnNumber >= MAX_TURNS && !gameEnded) {
-		if (eventLogger) {
+		PhaseContext ctx(
+			turnNumber, currentPhase, players, playerCount, _map,
+			stormSector, lastStormCard, nextStormCard, hasNextStormCard,
+			stormDeck, spiceDeck,
+			treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
+			eventLogger.get()
+		);
+
+		for (int i = 0; i < playerCount; ++i) {
+			FactionAbility* ability = players[i]->getFactionAbility();
+			if (ability && ability->checkSpecialVictory(ctx)) {
+				gameEnded = true;
+				if (eventLogger) {
+					Event e(EventType::GAME_ENDED,
+						"SPECIAL VICTORY! " + players[i]->getFactionName() +
+						" wins because no faction claimed victory before turn limit!",
+						turnNumber, "");
+					e.playerFaction = players[i]->getFactionName();
+					eventLogger->logEvent(e);
+				}
+				break;
+			}
+		}
+
+		if (!gameEnded && eventLogger) {
 			eventLogger->logDebug("=== GAME ENDED: Max turns reached ===");
 		}
 	}

@@ -20,22 +20,97 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	}
 
 	auto view = ctx.getShipAndMoveView();
-	
-	for (size_t i = 0; i < view.turnOrder.size(); ++i) {
-		int playerIndex = view.turnOrder[i];
-		Player* player  = view.players[playerIndex];
+
+	auto executeSinglePlayerTurn = [&](int playerIndex) {
+		Player* player = view.players[playerIndex];
 		if (ctx.logger) {
 			ctx.logger->logDebug("--- " + player->getFactionName() + "'s Turn ---");
 		}
-		
+
 		bool didShipment = executePlayerShipment(ctx, player);
 		bool didMovement = executePlayerMovement(ctx, player);
-		
+
 		if (!didShipment && !didMovement) {
 			if (ctx.logger) {
 				ctx.logger->logDebug(player->getFactionName() + " passes (no actions taken)");
 			}
 		}
+	};
+
+	int guildIndex = -1;
+	for (int playerIndex : view.turnOrder) {
+		FactionAbility* ability = ctx.getAbility(playerIndex);
+		if (ability && ability->canMoveOutOfTurnOrder()) {
+			guildIndex = playerIndex;
+			break;
+		}
+	}
+
+	if (guildIndex == -1) {
+		for (int playerIndex : view.turnOrder) {
+			executeSinglePlayerTurn(playerIndex);
+		}
+		return;
+	}
+
+	if (!view.interactiveMode) {
+		std::vector<int> actionOrder = view.turnOrder;
+		actionOrder.erase(std::remove(actionOrder.begin(), actionOrder.end(), guildIndex), actionOrder.end());
+		actionOrder.push_back(guildIndex);
+
+		if (ctx.logger) {
+			std::string orderStr = "SHIP_AND_MOVE action order: ";
+			for (size_t i = 0; i < actionOrder.size(); ++i) {
+				orderStr += view.players[actionOrder[i]]->getFactionName();
+				if (i + 1 < actionOrder.size()) {
+					orderStr += " -> ";
+				}
+			}
+			ctx.logger->logDebug(orderStr);
+		}
+
+		for (int playerIndex : actionOrder) {
+			executeSinglePlayerTurn(playerIndex);
+		}
+		return;
+	}
+
+	bool guildTurnTaken = false;
+
+	// Guild may choose to act before the first non-Guild player.
+	{
+		std::string answer;
+		std::cout << "  [Guild] Do you want to take your Ship+Move turn now (before others)? (y/n): ";
+		std::cin >> answer;
+		if (answer == "y" || answer == "Y" || answer == "yes" || answer == "Yes") {
+			executeSinglePlayerTurn(guildIndex);
+			guildTurnTaken = true;
+		}
+	}
+
+	for (int playerIndex : view.turnOrder) {
+		if (playerIndex == guildIndex) {
+			continue;
+		}
+
+		executeSinglePlayerTurn(playerIndex);
+
+		if (!guildTurnTaken) {
+			std::string answer;
+			std::cout << "  [Guild] Do you want to take your Ship+Move turn now? (y/n): ";
+			std::cin >> answer;
+			if (answer == "y" || answer == "Y" || answer == "yes" || answer == "Yes") {
+				executeSinglePlayerTurn(guildIndex);
+				guildTurnTaken = true;
+			}
+		}
+	}
+
+	if (!guildTurnTaken) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Guild] Taking Ship+Move at end of phase order");
+		}
+		executeSinglePlayerTurn(guildIndex);
 	}
 }
 

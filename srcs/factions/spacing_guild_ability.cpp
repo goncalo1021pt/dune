@@ -5,6 +5,7 @@
 #include "map.hpp"
 #include "logger/event_logger.hpp"
 #include "events/event.hpp"
+#include "settings.hpp"
 
 std::string SpacingGuildAbility::getFactionName() const { return "Spacing Guild"; }
 
@@ -85,4 +86,8 @@ bool SpacingGuildAbility::canShipToReserves() const {
 
 bool SpacingGuildAbility::canMoveOutOfTurnOrder() const {
 	return true;
+}
+
+bool SpacingGuildAbility::checkSpecialVictory(PhaseContext& ctx) const {
+	return ctx.turnNumber >= MAX_TURNS;
 }
