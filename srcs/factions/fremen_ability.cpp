@@ -14,42 +14,39 @@ std::string FremenAbility::getFactionName() const {
 }
 
 int FremenAbility::getFreeRevivalsPerTurn() const {
-	return 3;  // Fremen revive 3 forces per turn for free
+	return 3;
 }
 
 bool FremenAbility::canBuyAdditionalRevivals() const {
-	return false;  // Fremen cannot buy additional revivals
+	return false;
 }
 
 int FremenAbility::getBaseMovementRange() const {
-	return 2;  // Fremen can move 2 territories base (instead of 1)
+	return 2;
 }
 
 bool FremenAbility::requiresSpiceForFullUnitStrength() const {
-	return false;  // Fremen units count at full strength without spice
+	return false;
 }
 
 bool FremenAbility::survivesWorm() const {
-	return true;  // Fremen units survive sandworms
+	return true;
 }
 
 bool FremenAbility::hasReducedStormLosses() const {
-	return true;  // Fremen take half losses in storms
+	return true;
 }
 
 bool FremenAbility::canRideWorm() const {
-	return true;  // Fremen can ride sandworms
+	return true;
 }
 
 bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& territoryName) {
-	// Fremen can ride the worm to relocate their units to any other territory
-	
 	territory* wormTerritory = ctx.map.getTerritory(territoryName);
 	if (wormTerritory == nullptr) {
 		return false;
 	}
 
-	// Find Fremen player
 	int fremenIndex = -1;
 	for (size_t i = 0; i < ctx.players.size(); ++i) {
 		if (ctx.players[i]->getFactionAbility()->getFactionName() == "Fremen") {
@@ -57,12 +54,10 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 			break;
 		}
 	}
-
 	if (fremenIndex < 0) {
 		return false;
 	}
 
-	// Count Fremen units in this territory
 	int fremenUnitsHere = 0;
 	for (const auto& stack : wormTerritory->unitsPresent) {
 		if (stack.factionOwner == fremenIndex) {
@@ -71,10 +66,9 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 	}
 
 	if (fremenUnitsHere <= 0) {
-		return false;  // No Fremen units to ride the worm
+		return false;
 	}
 
-	// Remove Fremen units from this territory before worm kills anything
 	for (auto it = wormTerritory->unitsPresent.begin(); it != wormTerritory->unitsPresent.end(); ++it) {
 		if (it->factionOwner == fremenIndex) {
 			it->normal_units = 0;
@@ -82,7 +76,6 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 		}
 	}
 
-	// Clean up empty stacks
 	wormTerritory->unitsPresent.erase(
 		std::remove_if(wormTerritory->unitsPresent.begin(), wormTerritory->unitsPresent.end(),
 			[](const unitStack& stack) { return stack.normal_units == 0 && stack.elite_units == 0; }),
@@ -94,11 +87,8 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 			" with " + std::to_string(fremenUnitsHere) + " units");
 	}
 
-	// Choose destination - interactive or AI
 	std::string destinationTerritory;
-	
 	if (ctx.interactiveMode) {
-		// Interactive: ask Fremen player where to go
 		if (ctx.logger) {
 			ctx.logger->logDebug("=== FREMEN WORM RIDING ===");
 			ctx.logger->logDebug("Choose destination territory for " + std::to_string(fremenUnitsHere) + " units");
