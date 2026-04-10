@@ -10,6 +10,152 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 
+namespace {
+
+struct GuildSourceSelection {
+	std::string territory;
+	int sector;
+	int normalAvailable;
+	int eliteAvailable;
+};
+
+bool readIntInRange(PhaseContext& ctx, int minValue, int maxValue, int& outValue) {
+	while (true) {
+		std::string input;
+		std::getline(std::cin >> std::ws, input);
+		try {
+			int value = std::stoi(input);
+			if (value >= minValue && value <= maxValue) {
+				outValue = value;
+				return true;
+			}
+		} catch (...) {
+		}
+		if (ctx.logger) {
+			ctx.logger->logDebug("Invalid choice. Try again: ");
+		}
+	}
+}
+
+int promptMenuChoice(PhaseContext& ctx, const std::string& title, const std::vector<std::string>& options) {
+	if (ctx.logger) {
+		ctx.logger->logDebug(title);
+		for (size_t i = 0; i < options.size(); ++i) {
+			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + options[i]);
+		}
+	}
+
+	int choice = -1;
+	if (!readIntInRange(ctx, 0, static_cast<int>(options.size()), choice)) {
+		return -1;
+	}
+	if (choice == 0) {
+		return -1;
+	}
+	return choice - 1;
+}
+
+bool selectGuildSource(PhaseContext& ctx, int factionIndex, const std::string& failPrefix, GuildSourceSelection& outSel) {
+	auto view = ctx.getShipAndMoveView();
+
+	std::vector<std::string> sourceTerritories;
+	for (const auto& name : view.map.getTerritoriesWithUnits(factionIndex)) {
+		const territory* terr = view.map.getTerritory(name);
+		if (!terr) continue;
+		bool hasSafeSource = false;
+		for (int s : terr->sectors) {
+			if (GameMap::canLeaveSector(s, ctx.stormSector) &&
+				view.map.getUnitsInTerritorySector(name, factionIndex, s) > 0) {
+				hasSafeSource = true;
+				break;
+			}
+		}
+		if (hasSafeSource) sourceTerritories.push_back(name);
+	}
+
+	if (sourceTerritories.empty()) {
+		if (ctx.logger) ctx.logger->logDebug(failPrefix + " FAILED: no eligible source territory");
+		return false;
+	}
+
+	int sourceIdx = promptMenuChoice(ctx, failPrefix + ": choose source territory (0 to cancel)", sourceTerritories);
+	if (sourceIdx < 0) return false;
+	std::string fromTerritory = sourceTerritories[sourceIdx];
+
+	const territory* src = view.map.getTerritory(fromTerritory);
+	if (!src) return false;
+
+	std::vector<int> sourceSectors;
+	for (int s : src->sectors) {
+		if (GameMap::canLeaveSector(s, ctx.stormSector) &&
+			view.map.getUnitsInTerritorySector(fromTerritory, factionIndex, s) > 0) {
+			sourceSectors.push_back(s);
+		}
+	}
+	if (sourceSectors.empty()) {
+		if (ctx.logger) ctx.logger->logDebug(failPrefix + " FAILED: no source sector can leave storm");
+		return false;
+	}
+
+	int fromSector = sourceSectors[0];
+	if (sourceSectors.size() > 1) {
+		std::vector<std::string> sectorOptions;
+		for (int s : sourceSectors) {
+			int units = view.map.getUnitsInTerritorySector(fromTerritory, factionIndex, s);
+			sectorOptions.push_back("Sector " + std::to_string(s) + " (" + std::to_string(units) + " units)");
+		}
+		int sectorIdx = promptMenuChoice(ctx, "Choose source sector (0 to cancel):", sectorOptions);
+		if (sectorIdx < 0) return false;
+		fromSector = sourceSectors[sectorIdx];
+	}
+
+	int unitsInSource = view.map.getUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	int eliteInSource = view.map.getEliteUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	outSel.territory = fromTerritory;
+	outSel.sector = fromSector;
+	outSel.eliteAvailable = eliteInSource;
+	outSel.normalAvailable = unitsInSource - eliteInSource;
+	return true;
+}
+
+bool selectUnitSplitFromSource(PhaseContext& ctx,
+	int normalAvailable,
+	int eliteAvailable,
+	const std::string& totalPrompt,
+	int& normalUnits,
+	int& eliteUnits) {
+	const int totalAvailable = normalAvailable + eliteAvailable;
+	if (ctx.logger) {
+		ctx.logger->logDebug("Units in source: " + std::to_string(normalAvailable) + " normal, " +
+			std::to_string(eliteAvailable) + " elite");
+		ctx.logger->logDebug(totalPrompt + " (0-" + std::to_string(totalAvailable) + "): ");
+	}
+
+	int totalUnits = 0;
+	if (!readIntInRange(ctx, 0, totalAvailable, totalUnits)) {
+		return false;
+	}
+	if (totalUnits == 0) {
+		return false;
+	}
+
+	eliteUnits = 0;
+	if (eliteAvailable > 0) {
+		int maxElite = std::min(totalUnits, eliteAvailable);
+		if (ctx.logger) {
+			ctx.logger->logDebug("How many elite among these " + std::to_string(totalUnits) + "? (0-" + std::to_string(maxElite) + "): ");
+		}
+		if (!readIntInRange(ctx, 0, maxElite, eliteUnits)) {
+			return false;
+		}
+	}
+
+	normalUnits = totalUnits - eliteUnits;
+	return true;
+}
+
+} // namespace
+
 // ============================================================================
 // MAIN PHASE EXECUTION
 // ============================================================================
@@ -20,19 +166,42 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	}
 
 	auto view = ctx.getShipAndMoveView();
+	std::vector<bool> didAny(view.players.size(), false);
 
-	auto executeSinglePlayerTurn = [&](int playerIndex) {
+	auto executeShipmentForPlayer = [&](int playerIndex) {
 		Player* player = view.players[playerIndex];
 		if (ctx.logger) {
-			ctx.logger->logDebug("--- " + player->getFactionName() + "'s Turn ---");
+			ctx.logger->logDebug("--- " + player->getFactionName() + " Shipment ---");
 		}
-
 		bool didShipment = executePlayerShipment(ctx, player);
-		bool didMovement = executePlayerMovement(ctx, player);
+		didAny[playerIndex] = didAny[playerIndex] || didShipment;
+	};
 
-		if (!didShipment && !didMovement) {
-			if (ctx.logger) {
-				ctx.logger->logDebug(player->getFactionName() + " passes (no actions taken)");
+	auto executeMovementForPlayer = [&](int playerIndex) {
+		Player* player = view.players[playerIndex];
+		if (ctx.logger) {
+			ctx.logger->logDebug("--- " + player->getFactionName() + " Movement ---");
+		}
+		bool didMovement = executePlayerMovement(ctx, player);
+		didAny[playerIndex] = didAny[playerIndex] || didMovement;
+	};
+
+	auto runShipmentStep = [&](const std::vector<int>& order) {
+		for (int playerIndex : order) {
+			executeShipmentForPlayer(playerIndex);
+		}
+	};
+
+	auto runMovementStep = [&](const std::vector<int>& order) {
+		for (int playerIndex : order) {
+			executeMovementForPlayer(playerIndex);
+		}
+	};
+
+	auto logPasses = [&]() {
+		for (int playerIndex : view.turnOrder) {
+			if (!didAny[playerIndex] && ctx.logger) {
+				ctx.logger->logDebug(view.players[playerIndex]->getFactionName() + " passes (no actions taken)");
 			}
 		}
 	};
@@ -47,71 +216,74 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	}
 
 	if (guildIndex == -1) {
-		for (int playerIndex : view.turnOrder) {
-			executeSinglePlayerTurn(playerIndex);
-		}
+		// Detach for all factions: first all shipments, then all movements.
+		runShipmentStep(view.turnOrder);
+		runMovementStep(view.turnOrder);
+		logPasses();
 		return;
 	}
+
+	std::vector<int> nonGuildOrder = view.turnOrder;
+	nonGuildOrder.erase(std::remove(nonGuildOrder.begin(), nonGuildOrder.end(), guildIndex), nonGuildOrder.end());
 
 	if (!view.interactiveMode) {
-		std::vector<int> actionOrder = view.turnOrder;
-		actionOrder.erase(std::remove(actionOrder.begin(), actionOrder.end(), guildIndex), actionOrder.end());
-		actionOrder.push_back(guildIndex);
-
-		if (ctx.logger) {
-			std::string orderStr = "SHIP_AND_MOVE action order: ";
-			for (size_t i = 0; i < actionOrder.size(); ++i) {
-				orderStr += view.players[actionOrder[i]]->getFactionName();
-				if (i + 1 < actionOrder.size()) {
-					orderStr += " -> ";
-				}
-			}
-			ctx.logger->logDebug(orderStr);
-		}
-
-		for (int playerIndex : actionOrder) {
-			executeSinglePlayerTurn(playerIndex);
-		}
+		// AI mode: Guild acts once between global shipment and movement steps.
+		runShipmentStep(nonGuildOrder);
+		executeShipmentForPlayer(guildIndex);
+		executeMovementForPlayer(guildIndex);
+		runMovementStep(nonGuildOrder);
+		logPasses();
 		return;
 	}
 
-	bool guildTurnTaken = false;
+	bool guildShipmentTaken = false;
+	bool guildMovementTaken = false;
 
-	// Guild may choose to act before the first non-Guild player.
-	{
+	auto askYesNo = [&](const std::string& prompt) {
 		std::string answer;
-		std::cout << "  [Guild] Do you want to take your Ship+Move turn now (before others)? (y/n): ";
+		std::cout << prompt;
 		std::cin >> answer;
-		if (answer == "y" || answer == "Y" || answer == "yes" || answer == "Yes") {
-			executeSinglePlayerTurn(guildIndex);
-			guildTurnTaken = true;
-		}
-	}
+		return (answer == "y" || answer == "Y" || answer == "yes" || answer == "Yes");
+	};
 
-	for (int playerIndex : view.turnOrder) {
-		if (playerIndex == guildIndex) {
-			continue;
-		}
-
-		executeSinglePlayerTurn(playerIndex);
-
-		if (!guildTurnTaken) {
-			std::string answer;
-			std::cout << "  [Guild] Do you want to take your Ship+Move turn now? (y/n): ";
-			std::cin >> answer;
-			if (answer == "y" || answer == "Y" || answer == "yes" || answer == "Yes") {
-				executeSinglePlayerTurn(guildIndex);
-				guildTurnTaken = true;
+	auto offerGuildInterrupt = [&](const std::string& whenLabel) {
+		if (!guildShipmentTaken) {
+			if (askYesNo("  [Guild] Do you want to ship now (" + whenLabel + ")? (y/n): ")) {
+				executeShipmentForPlayer(guildIndex);
+				guildShipmentTaken = true;
+				if (!guildMovementTaken &&
+					askYesNo("  [Guild] Do you also want to move now? (y/n): ")) {
+					executeMovementForPlayer(guildIndex);
+					guildMovementTaken = true;
+				}
+			}
+		} else if (!guildMovementTaken) {
+			if (askYesNo("  [Guild] Do you want to move now (" + whenLabel + ")? (y/n): ")) {
+				executeMovementForPlayer(guildIndex);
+				guildMovementTaken = true;
 			}
 		}
+	};
+
+	// Offer before first non-Guild shipment.
+	offerGuildInterrupt("before first shipment");
+
+	for (int playerIndex : nonGuildOrder) {
+		Player* player = view.players[playerIndex];
+		executeShipmentForPlayer(playerIndex);
+
+		offerGuildInterrupt("after " + player->getFactionName() + " shipment");
+
+		executeMovementForPlayer(playerIndex);
+
+		offerGuildInterrupt("after " + player->getFactionName() + " movement");
 	}
 
-	if (!guildTurnTaken) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Guild] Taking Ship+Move at end of phase order");
-		}
-		executeSinglePlayerTurn(guildIndex);
+	// Final optional chance if Guild still has pending action.
+	if (!guildShipmentTaken || !guildMovementTaken) {
+		offerGuildInterrupt("end of phase");
 	}
+	logPasses();
 }
 
 // ============================================================================
@@ -120,6 +292,33 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 
 bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) {
 	auto view = ctx.getShipAndMoveView();
+	FactionAbility* ability = player->getFactionAbility();
+	bool isGuild = ability && ability->canCrossShip() && ability->canShipToReserves();
+
+	if (isGuild && view.interactiveMode) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("Shipment type:");
+			ctx.logger->logDebug("  0. Skip");
+			ctx.logger->logDebug("  1. Normal shipment (reserve -> Dune)");
+			ctx.logger->logDebug("  2. Guild cross-shipment (territory -> territory)");
+			ctx.logger->logDebug("  3. Guild return shipment (territory -> reserves)");
+			ctx.logger->logDebug("Choose shipment type (0-3): ");
+		}
+
+		int shipmentType = -1;
+		readIntInRange(ctx, 0, 3, shipmentType);
+
+		if (shipmentType == 0) {
+			if (ctx.logger) ctx.logger->logDebug("Shipment: Skipped");
+			return false;
+		}
+		if (shipmentType == 2) {
+			return executeGuildCrossShipment(ctx, player);
+		}
+		if (shipmentType == 3) {
+			return executeGuildReturnToReserveShipment(ctx, player);
+		}
+	}
 
 	if (player->getUnitsReserve() <= 0) {
 		if (ctx.logger) ctx.logger->logDebug("Shipment: No units in reserve");
@@ -155,6 +354,105 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	
 	return deployUnits(ctx, player, decision.territoryName,
 	                   decision.normalUnits, decision.eliteUnits, decision.sector);
+}
+
+bool ShipAndMovePhase::executeGuildCrossShipment(PhaseContext& ctx, Player* player) {
+	auto view = ctx.getShipAndMoveView();
+	int factionIndex = player->getFactionIndex();
+
+	GuildSourceSelection source;
+	if (!selectGuildSource(ctx, factionIndex, "Guild cross-shipment", source)) {
+		return false;
+	}
+
+	int normalUnits = 0;
+	int eliteUnits = 0;
+	if (!selectUnitSplitFromSource(ctx, source.normalAvailable, source.eliteAvailable,
+		"How many units to ship?", normalUnits, eliteUnits)) {
+		return false;
+	}
+	int totalUnits = normalUnits + eliteUnits;
+
+	std::vector<std::string> destinationTerritories;
+	for (const auto& terr : view.map.getTerritories()) {
+		if (terr.name == source.territory) continue;
+		if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) continue;
+		if (!view.map.canAddFactionToTerritory(terr.name, factionIndex)) continue;
+		destinationTerritories.push_back(terr.name);
+	}
+	if (destinationTerritories.empty()) {
+		if (ctx.logger) ctx.logger->logDebug("Guild cross-shipment FAILED: no valid destination territory");
+		return false;
+	}
+
+	int destIdx = promptMenuChoice(ctx, "Choose destination territory (0 to cancel):", destinationTerritories);
+	if (destIdx < 0) return false;
+	std::string toTerritory = destinationTerritories[destIdx];
+
+	const territory* dest = view.map.getTerritory(toTerritory);
+	if (!dest) return false;
+
+	std::vector<int> safeDestSectors;
+	for (int s : dest->sectors) {
+		if (GameMap::canLeaveSector(s, ctx.stormSector)) {
+			safeDestSectors.push_back(s);
+		}
+	}
+	if (safeDestSectors.empty()) {
+		if (ctx.logger) ctx.logger->logDebug("Guild cross-shipment FAILED: destination fully in storm");
+		return false;
+	}
+
+	int toSector = safeDestSectors[0];
+	if (safeDestSectors.size() > 1) {
+		std::vector<std::string> sectorOptions;
+		for (int s : safeDestSectors) {
+			sectorOptions.push_back("Sector " + std::to_string(s));
+		}
+		int sectorIdx = promptMenuChoice(ctx, "Choose destination sector (0 to cancel):", sectorOptions);
+		if (sectorIdx < 0) return false;
+		toSector = safeDestSectors[sectorIdx];
+	}
+
+	view.map.removeUnitsFromTerritorySector(source.territory, factionIndex, normalUnits, eliteUnits, source.sector);
+	view.map.addUnitsToTerritory(toTerritory, factionIndex, normalUnits, eliteUnits, toSector);
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("Guild cross-shipment: " + std::to_string(totalUnits) + " units " +
+			source.territory + "(s" + std::to_string(source.sector) + ") -> " +
+			toTerritory + "(s" + std::to_string(toSector) + ")");
+	}
+
+	return true;
+}
+
+bool ShipAndMovePhase::executeGuildReturnToReserveShipment(PhaseContext& ctx, Player* player) {
+	int factionIndex = player->getFactionIndex();
+
+	GuildSourceSelection source;
+	if (!selectGuildSource(ctx, factionIndex, "Guild return shipment", source)) {
+		return false;
+	}
+
+	int normalUnits = 0;
+	int eliteUnits = 0;
+	if (!selectUnitSplitFromSource(ctx, source.normalAvailable, source.eliteAvailable,
+		"How many units to ship to reserves?", normalUnits, eliteUnits)) {
+		return false;
+	}
+	int totalUnits = normalUnits + eliteUnits;
+
+	auto view = ctx.getShipAndMoveView();
+	view.map.removeUnitsFromTerritorySector(source.territory, factionIndex, normalUnits, eliteUnits, source.sector);
+	player->recallUnits(normalUnits);
+	player->recallEliteUnits(eliteUnits);
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("Guild return shipment: " + std::to_string(totalUnits) + " units from " +
+			source.territory + "(s" + std::to_string(source.sector) + ") -> reserves");
+	}
+
+	return true;
 }
 
 int ShipAndMovePhase::calculateDeploymentCost(const territory* terr, int unitCount, Player* player) const {

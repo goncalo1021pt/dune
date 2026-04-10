@@ -16,6 +16,10 @@ private:
 
 	bool executePlayerShipment(PhaseContext& ctx, Player* player);
 
+	// Guild special shipment types
+	bool executeGuildCrossShipment(PhaseContext& ctx, Player* player);
+	bool executeGuildReturnToReserveShipment(PhaseContext& ctx, Player* player);
+
 	int calculateDeploymentCost(const territory* terr, int unitCount, Player* player) const;
 
 	std::vector<std::string> getValidDeploymentTargets(PhaseContext& ctx, int factionIndex) const;
