@@ -155,4 +155,29 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 
 		view.spiceDeck.discardCard(card, discardPileIndex);
 	}
+
+	// Atreides prescience: after this phase resolves, peek what will blow next turn.
+	if (ctx.featureSettings.atreidesPeekNextSpiceBlowCards && ctx.logger) {
+		bool hasAtreides = false;
+		for (int i = 0; i < ctx.playerCount; ++i) {
+			FactionAbility* ability = ctx.players[i]->getFactionAbility();
+			if (ability && ability->getFactionName() == "Atreides") {
+				hasAtreides = true;
+				break;
+			}
+		}
+
+		if (hasAtreides) {
+			auto upcoming = view.spiceDeck.peekNextCards(blowCount);
+			for (size_t i = 0; i < upcoming.size(); ++i) {
+				const spiceCard& c = upcoming[i];
+				if (c.type == spiceCardType::WORM) {
+					ctx.logger->logDebug("[Atreides Prescience] Next turn Spice Blow card " + std::to_string(i + 1) + ": WORM");
+				} else {
+					ctx.logger->logDebug("[Atreides Prescience] Next turn Spice Blow card " + std::to_string(i + 1) + ": " +
+						c.territoryName + " (" + std::to_string(c.spiceAmount) + " spice)");
+				}
+			}
+		}
+	}
 }

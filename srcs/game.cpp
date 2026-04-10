@@ -35,13 +35,14 @@ static std::string getPhaseName(gamePhase phase) {
 	}
 }
 
-Game::Game(int numPlayers, unsigned int seed, bool interactive)
+Game::Game(int numPlayers, unsigned int seed, bool interactive, GameFeatureSettings featureSettings)
 	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
 	  treacheryDeck(rng), traitorDeck(rng), phases(), interactiveMode(interactive),
-	  eventLogger(std::make_unique<ConsoleEventLogger>()), gameEnded(false) {
+	  eventLogger(std::make_unique<ConsoleEventLogger>()), gameEnded(false),
+	  featureSettings(featureSettings) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -162,6 +163,10 @@ void Game::initializeGame() {
 		eventLogger->logDebug("Map initialized with " + std::to_string(_map.getTerritories().size()) + " territories");
 	}
 	spiceDeck.initialize(_map);
+	spiceDeck.setUseExtendedSpiceBlow(featureSettings.advancedDoubleSpiceBlow);
+	if (eventLogger && featureSettings.advancedDoubleSpiceBlow) {
+		eventLogger->logDebug("[Features] Advanced Double Spice Blow enabled");
+	}
 	treacheryDeck.initialize();
 	traitorDeck.initialize();
 	if (eventLogger) {
@@ -198,7 +203,7 @@ void Game::initializeGame() {
 	PhaseContext tempCtx(turnNumber, currentPhase, players, playerCount, _map,
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard, stormDeck,
 		spiceDeck, treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, 
-		interactiveMode, eventLogger.get());
+		interactiveMode, eventLogger.get(), featureSettings);
 	for (int i = 0; i < playerCount; ++i) {
 		if (players[i]->getFactionAbility()) {
 			players[i]->getFactionAbility()->placeStartingForces(tempCtx);
@@ -325,7 +330,7 @@ void Game::processPhase() {
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, spiceDeck,
 		treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
-		eventLogger.get()
+		eventLogger.get(), featureSettings
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {
@@ -394,7 +399,7 @@ void Game::runGame() {
 			stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 			stormDeck, spiceDeck,
 			treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
-			eventLogger.get()
+			eventLogger.get(), featureSettings
 		);
 
 		for (int i = 0; i < playerCount; ++i) {

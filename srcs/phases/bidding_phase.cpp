@@ -55,6 +55,14 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 	for (size_t i = 0; i < eligiblePlayers.size(); ++i) {
 		treacheryCard card = view.treacheryDeck.drawCard();
 		auctionCards.push_back(card);
+
+		// Notify factions a card was dealt face-down (Atreides prescience hook).
+		for (size_t p = 0; p < ctx.players.size(); ++p) {
+			FactionAbility* ability = ctx.getAbility(static_cast<int>(p));
+			if (ability) {
+				ability->onCardDealtForBidding(card, ctx);
+			}
+		}
 		if (ctx.logger) {
 			ctx.logger->logDebug("Card " + std::to_string(i + 1) + " dealt (face down)");
 		}

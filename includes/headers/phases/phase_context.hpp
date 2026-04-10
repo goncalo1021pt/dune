@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <random>
+#include "settings.hpp"
 
 // Forward declarations
 class Player;
@@ -47,6 +48,7 @@ struct PhaseContext {
 
 	// Rule toggles
 	bool& beneGesseritCharity;
+	const GameFeatureSettings& featureSettings;
 
 	// Random number generator
 	std::mt19937& rng;
@@ -213,7 +215,8 @@ struct PhaseContext {
 		bool& beneGesseritCharity_,
 		std::mt19937& rng_,
 		bool interactiveMode_ = false,
-		EventLogger* logger_ = nullptr
+		EventLogger* logger_ = nullptr,
+		const GameFeatureSettings& featureSettings_ = defaultFeatureSettings()
 	)
 		: turnNumber(turnNumber_), currentPhase(currentPhase_),
 		  players(players_), playerCount(playerCount_), map(map_),
@@ -224,6 +227,6 @@ struct PhaseContext {
 		  treacheryDeck(treacheryDeck_),
 		  traitorDeck(traitorDeck_),
 		  turnOrder(turnOrder_),
-		  beneGesseritCharity(beneGesseritCharity_), rng(rng_),
+		  beneGesseritCharity(beneGesseritCharity_), featureSettings(featureSettings_), rng(rng_),
 		  interactiveMode(interactiveMode_), logger(logger_), gameEnded(false) {}
 };

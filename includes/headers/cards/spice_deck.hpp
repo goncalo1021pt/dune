@@ -33,6 +33,8 @@ class SpiceDeck {
 
 		void initialize(GameMap& map);
 		spiceCard drawCard();
+		spiceCard peekTopCard();
+		std::vector<spiceCard> peekNextCards(int count);
 		void discardCard(const spiceCard& card, int discardPileIndex);
 		
 		// Getters

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <queue>
 #include <set>
+#include "cards/spice_deck.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 
@@ -167,6 +168,22 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 
 	auto view = ctx.getShipAndMoveView();
 	std::vector<bool> didAny(view.players.size(), false);
+
+	// Atreides prescience: peek top spice card before anyone moves.
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
+		if (!ability || ability->getFactionName() != "Atreides") continue;
+		if (ctx.logger) {
+			spiceCard top = ctx.spiceDeck.peekTopCard();
+			if (top.type == spiceCardType::WORM) {
+				ctx.logger->logDebug("[Atreides Prescience] Top Spice card: WORM");
+			} else {
+				ctx.logger->logDebug("[Atreides Prescience] Top Spice card: " + top.territoryName +
+					" (" + std::to_string(top.spiceAmount) + " spice)");
+			}
+		}
+		break;
+	}
 
 	auto executeShipmentForPlayer = [&](int playerIndex) {
 		Player* player = view.players[playerIndex];
