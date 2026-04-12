@@ -1217,6 +1217,19 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 	};
 
+	auto awardWinnerSpiceForDeadLeaders = [&](Player* winner) {
+		int spiceAward = 0;
+		if (attackerLeaderKilled) spiceAward += attackerChoice.leaderPower;
+		if (defenderLeaderKilled) spiceAward += defenderChoice.leaderPower;
+		if (spiceAward <= 0) return;
+
+		winner->addSpice(spiceAward);
+		if (ctx.logger) {
+			ctx.logger->logDebug("Battle reward: " + winner->getFactionName() +
+				" gains " + std::to_string(spiceAward) + " spice for dead leader(s) in this battle.");
+		}
+	};
+
 	// Determine winner (attacker wins ties)
 	if (attackerValue > defenderValue) {
 		if (ctx.logger) {
@@ -1248,6 +1261,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (ctx.featureSettings.advancedFactionAbilities) {
 			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
 		}
+		awardWinnerSpiceForDeadLeaders(attacker);
 		resolveBattleCardAftermath(attackerIdx, defenderIdx);
 		
 	} else if (attackerValue < defenderValue) {
@@ -1280,6 +1294,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (ctx.featureSettings.advancedFactionAbilities) {
 			defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
 		}
+		awardWinnerSpiceForDeadLeaders(defender);
 		resolveBattleCardAftermath(defenderIdx, attackerIdx);
 		
 	} else {
@@ -1312,6 +1327,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (ctx.featureSettings.advancedFactionAbilities) {
 			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
 		}
+		awardWinnerSpiceForDeadLeaders(attacker);
 		resolveBattleCardAftermath(attackerIdx, defenderIdx);
 	}
 }
