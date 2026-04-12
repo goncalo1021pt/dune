@@ -17,8 +17,9 @@ int main(int argc, char* argv[])
 	bool debugMode = false;
 	parsing(argc, argv, debugMode);
 	set_signal();
-	
-	Game dune_game(5, 42, debugMode, testingFeatureSettings());
+
+	Game dune_game(6, 42, debugMode);
+	// Game dune_game(6, 42, debugMode, testingFeatureSettings());
 	
 	GameDebugger::setGameInstance(&dune_game);
 	

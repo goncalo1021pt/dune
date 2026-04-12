@@ -2,8 +2,95 @@
 #include "game.hpp"
 #include "map.hpp"
 #include <algorithm>
+#include <iostream>
+#include <vector>
+#include <string>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+
+namespace {
+
+int findFremenPlayerIndex(PhaseContext& ctx) {
+	for (int i = 0; i < ctx.playerCount; ++i) {
+		FactionAbility* ability = ctx.players[i]->getFactionAbility();
+		if (ability && ability->getFactionName() == "Fremen") {
+			return i;
+		}
+	}
+	return -1;
+}
+
+std::vector<std::string> collectDesertTerritories(const GameMap& map) {
+	std::vector<std::string> result;
+	for (const auto& terr : map.getTerritories()) {
+		if (terr.terrain == terrainType::desert) {
+			result.push_back(terr.name);
+		}
+	}
+	return result;
+}
+
+std::string chooseFremenWormDestination(PhaseContext& ctx) {
+	const std::vector<std::string> options = collectDesertTerritories(ctx.map);
+	if (options.empty()) {
+		return "";
+	}
+
+	if (!ctx.interactiveMode) {
+		return options[0];
+	}
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Advanced Worm] Fremen chooses worm destination (desert only):");
+		for (size_t i = 0; i < options.size(); ++i) {
+			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + options[i]);
+		}
+		ctx.logger->logDebug("Choose (1-" + std::to_string(options.size()) + ") or enter desert name: ");
+	}
+
+	while (true) {
+		std::string input;
+		std::getline(std::cin >> std::ws, input);
+		try {
+			int idx = std::stoi(input);
+			if (idx >= 1 && idx <= static_cast<int>(options.size())) {
+				return options[idx - 1];
+			}
+		} catch (...) {
+			for (const std::string& opt : options) {
+				if (opt == input) {
+					return opt;
+				}
+			}
+		}
+
+		if (ctx.logger) {
+			ctx.logger->logDebug("Invalid desert territory. Try again: ");
+		}
+	}
+}
+
+void resolveAfterWormCardDraw(PhaseContext& ctx, SpiceDeck& deck, GameMap& map, int discardPileIndex) {
+	spiceCard extraCard = deck.drawCard();
+	if (extraCard.type == spiceCardType::LOCATION) {
+		territory* extraTerr = map.getTerritory(extraCard.territoryName);
+		if (extraTerr != nullptr) {
+			int sector = extraTerr->sectors.empty() ? -1 : extraTerr->sectors[0];
+			map.addSpiceToTerritory(extraCard.territoryName, extraCard.spiceAmount, sector);
+			if (ctx.logger) {
+				Event e(EventType::SPICE_BLOWN,
+					"[After Worm] " + std::to_string(extraCard.spiceAmount) + " spice placed at " + extraCard.territoryName,
+					ctx.turnNumber, "SPICE_BLOW");
+				e.territory = extraCard.territoryName;
+				e.spiceValue = extraCard.spiceAmount;
+				ctx.logger->logEvent(e);
+			}
+		}
+	}
+	deck.discardCard(extraCard, discardPileIndex);
+}
+
+}
 
 void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, GameMap& map, PhaseContext* ctxPtr) {
 	territory* terr = map.getTerritory(territoryName);
@@ -11,7 +98,6 @@ void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, Ga
 		return;
 	}
 
-	// Check if any faction can ride the worm (Fremen only, currently)
 	bool anyoneRode = false;
 	if (ctxPtr) {
 		for (int i = 0; i < ctxPtr->playerCount; ++i) {
@@ -89,7 +175,25 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 			} else {
 				const spiceCard& topDiscardCard = targetDiscardPile.back();
 				if (topDiscardCard.type != spiceCardType::LOCATION) {
-					if (ctx.logger) {
+					bool handledAdvancedDoubleWorm = false;
+					if (ctx.featureSettings.advancedFactionAbilities && topDiscardCard.type == spiceCardType::WORM) {
+						const int fremenIdx = findFremenPlayerIndex(ctx);
+						if (fremenIdx >= 0) {
+							std::string chosenTerritory = chooseFremenWormDestination(ctx);
+							if (!chosenTerritory.empty()) {
+								handledAdvancedDoubleWorm = true;
+								if (ctx.logger) {
+									ctx.logger->logDebug("[Advanced Worm] Consecutive worms in discard pile " +
+										std::string(discardPileIndex == 1 ? "B" : "A") +
+										": Fremen sends worm to " + chosenTerritory);
+								}
+								resolveWormOnTerritory(chosenTerritory, view.map, &ctx);
+								resolveAfterWormCardDraw(ctx, view.spiceDeck, view.map, discardPileIndex);
+							}
+						}
+					}
+
+					if (!handledAdvancedDoubleWorm && ctx.logger) {
 						ctx.logger->logDebug("Worm with no effect (top card is WORM)");
 					}
 				} else {
@@ -104,25 +208,8 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 							ctx.logger->logDebug("Worm strikes: " + topDiscardCard.territoryName);
 						}
 						resolveWormOnTerritory(topDiscardCard.territoryName, view.map, &ctx);
-						
-						// Draw an additional card after worm resolves
-						spiceCard extraCard = view.spiceDeck.drawCard();
-						if (extraCard.type == spiceCardType::LOCATION) {
-							territory* extraTerr = view.map.getTerritory(extraCard.territoryName);
-							if (extraTerr != nullptr) {
-								int sector = extraTerr->sectors.empty() ? -1 : extraTerr->sectors[0];
-								view.map.addSpiceToTerritory(extraCard.territoryName, extraCard.spiceAmount, sector);
-								if (ctx.logger) {
-									Event e(EventType::SPICE_BLOWN,
-										"[After Worm] " + std::to_string(extraCard.spiceAmount) + " spice placed at " + extraCard.territoryName,
-										ctx.turnNumber, "SPICE_BLOW");
-									e.territory = extraCard.territoryName;
-									e.spiceValue = extraCard.spiceAmount;
-									ctx.logger->logEvent(e);
-								}
-							}
-						}
-						view.spiceDeck.discardCard(extraCard, discardPileIndex);
+
+						resolveAfterWormCardDraw(ctx, view.spiceDeck, view.map, discardPileIndex);
 					}
 				}
 			}

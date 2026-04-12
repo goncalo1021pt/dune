@@ -156,6 +156,11 @@ void Game::initializeGame() {
 	if (eventLogger) {
 		eventLogger->logDebug("=== Initializing Dune Game ===");
 		eventLogger->logDebug("Number of players: " + std::to_string(playerCount));
+		eventLogger->logDebug("Loaded settings:");
+		eventLogger->logDebug("  advancedFactionAbilities: " + std::string(featureSettings.advancedFactionAbilities ? "ON" : "OFF"));
+		eventLogger->logDebug("  increasedSpiceFlow: " + std::string(featureSettings.increasedSpiceFlow ? "ON" : "OFF"));
+		eventLogger->logDebug("  advancedCombat: " + std::string(featureSettings.advancedCombat ? "ON" : "OFF"));
+		eventLogger->logDebug("  advancedDoubleSpiceBlow: " + std::string(featureSettings.advancedDoubleSpiceBlow ? "ON" : "OFF"));
 	}
 	
 	_map.initializeMap();

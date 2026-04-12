@@ -55,12 +55,20 @@ void EmperorAbility::placeStartingForces(PhaseContext& ctx) {
 	if (emperorIndex < 0) return;
 	
 	Player* emperor = ctx.players[emperorIndex];
-	
-	// Emperor starts with 15 normal units + 5 Sardukar (elite) soldiers outside the planet (not deployed)
-	emperor->setUnitsReserve(15);
-	emperor->setEliteUnitsReserve(5);
-	
-	if (ctx.logger) {
-		ctx.logger->logDebug("[Emperor] Starts with 15 normal units + 5 Sardukar elite soldiers in reserves (outside planet)");
+
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		// Advanced faction rules: 15 normal + 5 Sardaukar.
+		emperor->setUnitsReserve(15);
+		emperor->setEliteUnitsReserve(5);
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Emperor] Starts with 15 normal units + 5 Sardaukar elite soldiers in reserves (advanced factions)");
+		}
+	} else {
+		// Basic mode: no special units.
+		emperor->setUnitsReserve(20);
+		emperor->setEliteUnitsReserve(0);
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Emperor] Starts with 20 normal units in reserves (basic mode)");
+		}
 	}
 }

@@ -171,8 +171,8 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	auto view = ctx.getShipAndMoveView();
 	std::vector<bool> didAny(view.players.size(), false);
 
-	// Atreides prescience: at start of Ship+Move, peek upcoming Spice Blow cards.
-	if (ctx.featureSettings.atreidesPeekNextSpiceBlowCards && ctx.logger) {
+	// Atreides prescience is a base faction ability.
+	if (ctx.logger) {
 		for (size_t i = 0; i < ctx.players.size(); ++i) {
 			FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
 			if (!ability || ability->getFactionName() != "Atreides") continue;
@@ -231,18 +231,22 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	};
 
 	int guildIndex = -1;
-	for (int playerIndex : view.turnOrder) {
-		FactionAbility* ability = ctx.getAbility(playerIndex);
-		if (ability && ability->canMoveOutOfTurnOrder()) {
-			guildIndex = playerIndex;
-			break;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		for (int playerIndex : view.turnOrder) {
+			FactionAbility* ability = ctx.getAbility(playerIndex);
+			if (ability && ability->canMoveOutOfTurnOrder()) {
+				guildIndex = playerIndex;
+				break;
+			}
 		}
 	}
 
 	if (guildIndex == -1) {
-		// Detach for all factions: first all shipments, then all movements.
-		runShipmentStep(view.turnOrder);
-		runMovementStep(view.turnOrder);
+		// Standard flow: each faction resolves shipment, then movement.
+		for (int playerIndex : view.turnOrder) {
+			executeShipmentForPlayer(playerIndex);
+			executeMovementForPlayer(playerIndex);
+		}
 		logPasses();
 		return;
 	}

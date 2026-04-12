@@ -241,7 +241,7 @@ void FremenAbility::setupAtStart(Player* player) {
 	if (player == nullptr) 
         return;
 	player->setSpice(3);
-	player->setEliteUnitsReserve(3);  // Fremen start with 3 Fedaykin
+	// Special units are configured in placeStartingForces based on feature settings.
 }
 
 void FremenAbility::placeStartingForces(PhaseContext& ctx) {
@@ -257,6 +257,9 @@ void FremenAbility::placeStartingForces(PhaseContext& ctx) {
 	if (fremenIndex < 0) return;
 	
 	Player* fremen = ctx.players[fremenIndex];
+
+	const bool useAdvancedFactionRules = ctx.featureSettings.advancedFactionAbilities;
+	fremen->setEliteUnitsReserve(useAdvancedFactionRules ? 3 : 0);
 	
 	const std::string territories[] = {"Sietch Tabr", "False Wall South", "False Wall West"};
 	int distribution[3] = {0, 0, 0};
@@ -290,7 +293,7 @@ void FremenAbility::placeStartingForces(PhaseContext& ctx) {
 			ctx.logger->logDebug("Distribute starting units across each sietch, specifying normal and elite units.");
 		}
 		
-		int eliteRemaining = fremen->getEliteUnitsReserve();  // Track elite locally (3 Fedaykin)
+		int eliteRemaining = fremen->getEliteUnitsReserve();
 		
 		for (int i = 0; i < 3; ++i) {
 			int remaining = totalToAllocate;
@@ -354,8 +357,13 @@ void FremenAbility::placeStartingForces(PhaseContext& ctx) {
 	
 	// Deploy units for AI mode (interactive already deployed in loop above)
 	if (!ctx.interactiveMode) {
-		// AI: distribute 3 Fedaykin (1 per sietch)
-		int eliteDistribution[3] = {1, 1, 1};
+		// AI: distribute special units only in advanced faction mode.
+		int eliteDistribution[3] = {0, 0, 0};
+		if (useAdvancedFactionRules) {
+			eliteDistribution[0] = 1;
+			eliteDistribution[1] = 1;
+			eliteDistribution[2] = 1;
+		}
 		
 		for (int i = 0; i < 3; ++i) {
 			if (distribution[i] > 0) {

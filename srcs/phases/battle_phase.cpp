@@ -572,10 +572,14 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 
 	const std::string attackerFaction = attacker->getFactionName();
 	const std::string defenderFaction = defender->getFactionName();
-	const int attackerEliteStrength =
-		(attackerFaction == "Emperor" && defenderFaction == "Fremen") ? 1 : 2;
-	const int defenderEliteStrength =
-		(defenderFaction == "Emperor" && attackerFaction == "Fremen") ? 1 : 2;
+	int attackerEliteStrength = 1;
+	int defenderEliteStrength = 1;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		attackerEliteStrength =
+			(attackerFaction == "Emperor" && defenderFaction == "Fremen") ? 1 : 2;
+		defenderEliteStrength =
+			(defenderFaction == "Emperor" && attackerFaction == "Fremen") ? 1 : 2;
+	}
 	AtreidesPeekState atreidesPeek =
 		prepareAtreidesPeekForBattle(ctx, attackerIdx, defenderIdx, attacker, defender);
 	LockedBattleElement lockedElement;
@@ -907,8 +911,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logEvent(e);
 		}
 		
-		// Trigger faction ability hooks for battle win
-		attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		// Trigger advanced faction battle-win hooks (e.g., Harkonnen capture)
+		if (ctx.featureSettings.advancedFactionAbilities) {
+			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		}
 		resolveBattleCardAftermath(attackerIdx, defenderIdx);
 		
 	} else if (attackerValue < defenderValue) {
@@ -937,8 +943,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logEvent(e);
 		}
 		
-		// Trigger faction ability hooks for battle win
-		defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
+		// Trigger advanced faction battle-win hooks (e.g., Harkonnen capture)
+		if (ctx.featureSettings.advancedFactionAbilities) {
+			defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
+		}
 		resolveBattleCardAftermath(defenderIdx, attackerIdx);
 		
 	} else {
@@ -967,8 +975,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logEvent(e);
 		}
 		
-		// Trigger faction ability hooks for battle win (attacker wins tie)
-		attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		// Trigger advanced faction battle-win hooks (attacker wins tie)
+		if (ctx.featureSettings.advancedFactionAbilities) {
+			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		}
 		resolveBattleCardAftermath(attackerIdx, defenderIdx);
 	}
 }
