@@ -323,9 +323,11 @@ InteractiveInput::MovementChoice InteractiveInput::getMovementDecision(
 	// If there are elite units in the stack, ask how many should be elite
 	if (eliteInSourceSector > 0 && totalUnits > 0) {
 		int maxEliteForMovement = std::min(totalUnits, eliteInSourceSector);
-		std::cout << "  How many elite among these " << totalUnits << "? (0-" << maxEliteForMovement << "): ";
+		int minEliteForMovement = std::max(0, totalUnits - normalInSourceSector);
+		std::cout << "  How many elite among these " << totalUnits << "? (" << minEliteForMovement
+			<< "-" << maxEliteForMovement << "): ";
 		std::cin >> eliteUnits;
-		eliteUnits = std::max(0, std::min(eliteUnits, maxEliteForMovement));
+		eliteUnits = std::max(minEliteForMovement, std::min(eliteUnits, maxEliteForMovement));
 		normalUnits = totalUnits - eliteUnits;
 	}
 	

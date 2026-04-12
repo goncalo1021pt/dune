@@ -6,6 +6,7 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include <algorithm>
+#include <iostream>
 
 std::string HarkonnenAbility::getFactionName() const {
 	return "Harkonnen";
@@ -104,55 +105,86 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 	// Get opponent's alive leaders
 	const auto& opponentLeaders = opponent->getAliveLeaders();
 	if (opponentLeaders.empty()) {
-		// No leaders to capture, default to 2 spice
-		harkonnen->addSpice(2);
 		if (ctx.logger) {
 			Event e(EventType::BATTLE_RESOLVED,
-				"[Harkonnen] Opponent has no leaders, takes 2 spice",
+				"[Harkonnen] Opponent has no leaders to capture",
+				ctx.turnNumber, "BATTLE");
+			e.playerFaction = "Harkonnen";
+			ctx.logger->logEvent(e);
+		}
+		return;
+	}
+
+	// Capture the highest-power opponent leader.
+	int captureIdx = 0;
+	for (int i = 1; i < static_cast<int>(opponentLeaders.size()); ++i) {
+		if (opponentLeaders[i].power > opponentLeaders[captureIdx].power) {
+			captureIdx = i;
+		}
+	}
+
+	std::vector<Leader>& mutableOppLeaders = opponent->getAliveLeadersMutable();
+	if (captureIdx < 0 || captureIdx >= static_cast<int>(mutableOppLeaders.size())) {
+		return;
+	}
+
+	Leader captured = mutableOppLeaders[captureIdx];
+	addCapturedLeader(captured);
+	mutableOppLeaders.erase(mutableOppLeaders.begin() + captureIdx);
+
+	if (ctx.logger) {
+		Event e(EventType::BATTLE_RESOLVED,
+			"[Harkonnen] Captures leader " + captured.name + " from " + opponent->getFactionName(),
+			ctx.turnNumber, "BATTLE");
+		e.playerFaction = "Harkonnen";
+		ctx.logger->logEvent(e);
+	}
+
+	// Immediately after capture, Harkonnen may execute the captured leader for 2 spice.
+	bool executeCapturedLeader = false;
+	if (ctx.interactiveMode) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Harkonnen] Execute captured leader " + captured.name + " for 2 spice? (y/n): ");
+		}
+		std::string input;
+		std::getline(std::cin >> std::ws, input);
+		executeCapturedLeader = (input == "y" || input == "Y" || input == "yes" || input == "Yes");
+	}
+
+	if (executeCapturedLeader) {
+		removeCapturedLeader(static_cast<int>(capturedLeaders.size()) - 1);
+		harkonnen->addSpice(2);
+
+		if (ctx.logger) {
+			Event e(EventType::BATTLE_RESOLVED,
+				"[Harkonnen] Executes captured leader " + captured.name + " for 2 spice",
 				ctx.turnNumber, "BATTLE");
 			e.playerFaction = "Harkonnen";
 			e.spiceValue = 2;
 			ctx.logger->logEvent(e);
 		}
-		return;
-	}
-	
-	// TODO: Interactive choice: capture a leader or take 2 spice
-	// For now, store leader index and take 2 spice as default
-	// When battle phase implements interactive choice, call:
-	//   harkonnen->getFactionAbility()->addCapturedLeader(leaderIndex);
-	
-	harkonnen->addSpice(2);
-	if (ctx.logger) {
-		Event e(EventType::BATTLE_RESOLVED,
-			"[Harkonnen] Takes 2 spice from battle victory",
-			ctx.turnNumber, "BATTLE");
-		e.playerFaction = "Harkonnen";
-		e.spiceValue = 2;
-		ctx.logger->logEvent(e);
 	}
 }
 
 // --- Captured Leaders management ---
-const std::vector<int>& HarkonnenAbility::getCapturedLeaders() const {
-	return capturedLeaderIndices;
+const std::vector<Leader>& HarkonnenAbility::getCapturedLeaders() const {
+	return capturedLeaders;
 }
 
-void HarkonnenAbility::addCapturedLeader(int leaderIndex) {
-	capturedLeaderIndices.push_back(leaderIndex);
+void HarkonnenAbility::addCapturedLeader(const Leader& leader) {
+	capturedLeaders.push_back(leader);
 }
 
-void HarkonnenAbility::removeCapturedLeader(int leaderIndex) {
-	auto it = std::find(capturedLeaderIndices.begin(), capturedLeaderIndices.end(), leaderIndex);
-	if (it != capturedLeaderIndices.end()) {
-		capturedLeaderIndices.erase(it);
+void HarkonnenAbility::removeCapturedLeader(int capturedIndex) {
+	if (capturedIndex >= 0 && capturedIndex < static_cast<int>(capturedLeaders.size())) {
+		capturedLeaders.erase(capturedLeaders.begin() + capturedIndex);
 	}
 }
 
 void HarkonnenAbility::clearCapturedLeaders() {
-	capturedLeaderIndices.clear();
+	capturedLeaders.clear();
 }
 
 bool HarkonnenAbility::hasCapturedLeaders() const {
-	return !capturedLeaderIndices.empty();
+	return !capturedLeaders.empty();
 }

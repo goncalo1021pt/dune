@@ -55,14 +55,6 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 	for (size_t i = 0; i < eligiblePlayers.size(); ++i) {
 		treacheryCard card = view.treacheryDeck.drawCard();
 		auctionCards.push_back(card);
-
-		// Notify factions a card was dealt face-down (Atreides prescience hook).
-		for (size_t p = 0; p < ctx.players.size(); ++p) {
-			FactionAbility* ability = ctx.getAbility(static_cast<int>(p));
-			if (ability) {
-				ability->onCardDealtForBidding(card, ctx);
-			}
-		}
 		if (ctx.logger) {
 			ctx.logger->logDebug("Card " + std::to_string(i + 1) + " dealt (face down)");
 		}
@@ -75,8 +67,17 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 	int startingBidderIndex = 0; // Index in eligiblePlayers, will rotate
 
 	for (size_t cardIdx = 0; cardIdx < auctionCards.size(); ++cardIdx) {
+		// Notify factions card-by-card at reveal time (Atreides prescience).
+		for (size_t p = 0; p < ctx.players.size(); ++p) {
+			FactionAbility* ability = ctx.getAbility(static_cast<int>(p));
+			if (ability) {
+				ability->onCardDealtForBidding(auctionCards[cardIdx], ctx);
+			}
+		}
+
 		if (ctx.logger) {
-			ctx.logger->logDebug("Card " + std::to_string(cardIdx + 1) + ": " + auctionCards[cardIdx].name);
+			ctx.logger->logDebug("Card " + std::to_string(cardIdx + 1) + " up for auction");
+
 		}
 
 		// Find next eligible player to start bidding

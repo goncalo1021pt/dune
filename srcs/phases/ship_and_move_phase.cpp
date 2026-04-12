@@ -143,10 +143,12 @@ bool selectUnitSplitFromSource(PhaseContext& ctx,
 	eliteUnits = 0;
 	if (eliteAvailable > 0) {
 		int maxElite = std::min(totalUnits, eliteAvailable);
+		int minElite = std::max(0, totalUnits - normalAvailable);
 		if (ctx.logger) {
-			ctx.logger->logDebug("How many elite among these " + std::to_string(totalUnits) + "? (0-" + std::to_string(maxElite) + "): ");
+			ctx.logger->logDebug("How many elite among these " + std::to_string(totalUnits) + "? (" +
+				std::to_string(minElite) + "-" + std::to_string(maxElite) + "): ");
 		}
-		if (!readIntInRange(ctx, 0, maxElite, eliteUnits)) {
+		if (!readIntInRange(ctx, minElite, maxElite, eliteUnits)) {
 			return false;
 		}
 	}
@@ -169,20 +171,25 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	auto view = ctx.getShipAndMoveView();
 	std::vector<bool> didAny(view.players.size(), false);
 
-	// Atreides prescience: peek top spice card before anyone moves.
-	for (size_t i = 0; i < ctx.players.size(); ++i) {
-		FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
-		if (!ability || ability->getFactionName() != "Atreides") continue;
-		if (ctx.logger) {
-			spiceCard top = ctx.spiceDeck.peekTopCard();
-			if (top.type == spiceCardType::WORM) {
-				ctx.logger->logDebug("[Atreides Prescience] Top Spice card: WORM");
-			} else {
-				ctx.logger->logDebug("[Atreides Prescience] Top Spice card: " + top.territoryName +
-					" (" + std::to_string(top.spiceAmount) + " spice)");
+	// Atreides prescience: at start of Ship+Move, peek upcoming Spice Blow cards.
+	if (ctx.featureSettings.atreidesPeekNextSpiceBlowCards && ctx.logger) {
+		for (size_t i = 0; i < ctx.players.size(); ++i) {
+			FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
+			if (!ability || ability->getFactionName() != "Atreides") continue;
+
+			const int blowCount = ctx.spiceDeck.isUsingExtendedSpiceBlow() ? 2 : 1;
+			auto upcoming = ctx.spiceDeck.peekNextCards(blowCount);
+			for (size_t cardIdx = 0; cardIdx < upcoming.size(); ++cardIdx) {
+				const spiceCard& c = upcoming[cardIdx];
+				if (c.type == spiceCardType::WORM) {
+					ctx.logger->logDebug("[Atreides Prescience] Next Spice Blow card " + std::to_string(cardIdx + 1) + ": WORM");
+				} else {
+					ctx.logger->logDebug("[Atreides Prescience] Next Spice Blow card " + std::to_string(cardIdx + 1) + ": " +
+						c.territoryName + " (" + std::to_string(c.spiceAmount) + " spice)");
+				}
 			}
+			break;
 		}
-		break;
 	}
 
 	auto executeShipmentForPlayer = [&](int playerIndex) {
@@ -757,6 +764,19 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 			ctx.logger->logDebug("Movement FAILED: Need " + std::to_string(totalUnits) +
 				" in sector " + std::to_string(fromSector) + " of " + fromTerritory +
 				", have " + std::to_string(unitsInSector));
+		}
+		return false;
+	}
+
+	int eliteInSector = view.map.getEliteUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	int normalInSector = unitsInSector - eliteInSector;
+	if (normalUnits < 0 || eliteUnits < 0 || normalUnits > normalInSector || eliteUnits > eliteInSector) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement FAILED: Invalid unit split from sector " +
+				std::to_string(fromSector) + " of " + fromTerritory + " (requested " +
+				std::to_string(normalUnits) + " normal, " + std::to_string(eliteUnits) +
+				" elite; available " + std::to_string(normalInSector) + " normal, " +
+				std::to_string(eliteInSector) + " elite)");
 		}
 		return false;
 	}

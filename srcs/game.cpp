@@ -172,6 +172,21 @@ void Game::initializeGame() {
 	if (eventLogger) {
 		eventLogger->logDebug("Treachery deck initialized with " + std::to_string(treacheryDeck.getTotalCards()) + " cards");
 	}
+
+	// Deal starting treachery cards face-down.
+	for (int i = 0; i < playerCount; ++i) {
+		FactionAbility* ability = players[i]->getFactionAbility();
+		int startingCount = ability ? ability->getStartingTreacheryCardCount() : 1;
+		for (int draw = 0; draw < startingCount; ++draw) {
+			treacheryCard card = treacheryDeck.drawCard();
+			players[i]->addTreacheryCard(card.name);
+		}
+
+		if (eventLogger) {
+			eventLogger->logDebug(players[i]->getFactionName() +
+				" receives " + std::to_string(startingCount) + " starting treachery card(s) face down");
+		}
+	}
 	
 	stormSector = 0;
 	initializeStormDeck();
