@@ -133,6 +133,23 @@ void StormPhase::execute(PhaseContext& ctx) {
 	}
 	auto view = ctx.getStormView();
 
+	auto logFremenStormPrescience = [&]() {
+		if (!ctx.featureSettings.fremenPeekNextStormCard || !ctx.logger || !view.hasNextStormCard) {
+			return;
+		}
+		bool hasFremen = false;
+		for (int i = 0; i < ctx.playerCount; ++i) {
+			FactionAbility* ability = ctx.players[i]->getFactionAbility();
+			if (ability && ability->getFactionName() == "Fremen") {
+				hasFremen = true;
+				break;
+			}
+		}
+		if (hasFremen) {
+			ctx.logger->logDebug("[Fremen Prescience] Next turn storm move card: " + std::to_string(view.nextStormCard));
+		}
+	};
+
 	if (view.turnNumber == 1) {
 		// Turn 1: place storm at a random starting sector.
 		// No units have been placed yet so damage application is skipped.
@@ -149,6 +166,7 @@ void StormPhase::execute(PhaseContext& ctx) {
 			e.territory = std::to_string(view.stormSector);
 			ctx.logger->logEvent(e);
 		}
+		logFremenStormPrescience();
 		return;
 	}
 
@@ -180,4 +198,5 @@ void StormPhase::execute(PhaseContext& ctx) {
 
 	// Apply damage to all sectors swept this turn.
 	applyStormDamage(ctx, prevSector, view.lastStormCard);
+	logFremenStormPrescience();
 }

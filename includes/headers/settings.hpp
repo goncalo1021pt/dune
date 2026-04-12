@@ -6,7 +6,7 @@
 namespace GameConstants {
     constexpr int MIN_PLAYERS = 2;
     constexpr int MAX_PLAYERS = 6;
-    constexpr int MAX_TURNS = 14;
+    constexpr int MAX_TURNS = 10;
     constexpr int TOTAL_SECTORS = 18;
     constexpr int MAX_REVIVES_PER_TURN = 3;
     constexpr int SPICE_COST_PER_REVIVAL = 2;
@@ -36,6 +36,25 @@ namespace GameConstants {
 		}
 		return "Unknown";
 	}
+}
+
+struct GameFeatureSettings {
+	bool advancedDoubleSpiceBlow = false;
+	bool atreidesPeekNextSpiceBlowCards = true;
+	bool fremenPeekNextStormCard = true;
+};
+
+inline GameFeatureSettings defaultFeatureSettings() {
+	return GameFeatureSettings{};
+}
+
+// Testing profile: enable most currently implemented advanced features.
+inline GameFeatureSettings testingFeatureSettings() {
+	GameFeatureSettings s;
+	s.advancedDoubleSpiceBlow = true;
+	s.atreidesPeekNextSpiceBlowCards = true;
+	s.fremenPeekNextStormCard = true;
+	return s;
 }
 
 using namespace GameConstants;

@@ -64,6 +64,43 @@ spiceCard SpiceDeck::drawCard() {
 	return card;
 }
 
+spiceCard SpiceDeck::peekTopCard() {
+	if (deckIndex >= deck.size()) {
+		reshuffle();
+	}
+
+	if (deck.empty()) {
+		spiceCard fallback;
+		fallback.type = spiceCardType::WORM;
+		fallback.territoryName = "";
+		fallback.spiceAmount = 0;
+		return fallback;
+	}
+
+	return deck[deckIndex];
+}
+
+std::vector<spiceCard> SpiceDeck::peekNextCards(int count) {
+	std::vector<spiceCard> result;
+	if (count <= 0) return result;
+
+	if (deckIndex >= deck.size()) {
+		reshuffle();
+	}
+
+	if (deck.empty()) {
+		return result;
+	}
+
+	int available = static_cast<int>(deck.size() - deckIndex);
+	int toTake = std::min(count, available);
+	for (int i = 0; i < toTake; ++i) {
+		result.push_back(deck[deckIndex + i]);
+	}
+
+	return result;
+}
+
 void SpiceDeck::discardCard(const spiceCard& card, int discardPileIndex) {
 	if (useExtendedSpiceBlow && discardPileIndex == 1) {
 		discardPileB.push_back(card);

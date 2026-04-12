@@ -106,6 +106,7 @@ class Game {
 
 		// Game state
 		bool gameEnded;
+		GameFeatureSettings featureSettings;
 
 		bool checkVictory();
 		void initializePhases();
@@ -113,7 +114,8 @@ class Game {
 		void setTurnOrder();  // Recalculate turn order based on sector positions
 
 	public:
-		Game(int numPlayers, unsigned int seed = 42, bool interactive = false);
+		Game(int numPlayers, unsigned int seed = 42, bool interactive = false,
+		     GameFeatureSettings featureSettings = defaultFeatureSettings());
 		~Game();
 
 		void initializeGame();

@@ -67,8 +67,17 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 	int startingBidderIndex = 0; // Index in eligiblePlayers, will rotate
 
 	for (size_t cardIdx = 0; cardIdx < auctionCards.size(); ++cardIdx) {
+		// Notify factions card-by-card at reveal time (Atreides prescience).
+		for (size_t p = 0; p < ctx.players.size(); ++p) {
+			FactionAbility* ability = ctx.getAbility(static_cast<int>(p));
+			if (ability) {
+				ability->onCardDealtForBidding(auctionCards[cardIdx], ctx);
+			}
+		}
+
 		if (ctx.logger) {
-			ctx.logger->logDebug("Card " + std::to_string(cardIdx + 1) + ": " + auctionCards[cardIdx].name);
+			ctx.logger->logDebug("Card " + std::to_string(cardIdx + 1) + " up for auction");
+
 		}
 
 		// Find next eligible player to start bidding

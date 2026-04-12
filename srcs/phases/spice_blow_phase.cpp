@@ -155,4 +155,5 @@ void SpiceBlowPhase::execute(PhaseContext& ctx) {
 
 		view.spiceDeck.discardCard(card, discardPileIndex);
 	}
+
 }

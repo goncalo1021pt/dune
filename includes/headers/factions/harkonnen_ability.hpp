@@ -1,5 +1,6 @@
 #pragma once
 #include "factions/faction_ability.hpp"
+#include "leader.hpp"
 #include <vector>
 
 class HarkonnenAbility : public FactionAbility {
@@ -23,14 +24,14 @@ public:
 	void placeStartingForces(PhaseContext& ctx) override;
 
 	// --- Captured Leaders management (explicit getter/setter pattern) ---
-	const std::vector<int>& getCapturedLeaders() const;
-	void addCapturedLeader(int leaderIndex);
-	void removeCapturedLeader(int leaderIndex);
+	const std::vector<Leader>& getCapturedLeaders() const;
+	void addCapturedLeader(const Leader& leader);
+	void removeCapturedLeader(int capturedIndex);
 	void clearCapturedLeaders();
 	bool hasCapturedLeaders() const;
 
 private:
-	std::vector<int> capturedLeaderIndices;  // Leaders captured from enemies (leaderIndex = global index)
+	std::vector<Leader> capturedLeaders;
 };
 
 
