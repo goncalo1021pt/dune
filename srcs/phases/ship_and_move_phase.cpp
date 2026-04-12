@@ -255,7 +255,6 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	nonGuildOrder.erase(std::remove(nonGuildOrder.begin(), nonGuildOrder.end(), guildIndex), nonGuildOrder.end());
 
 	if (!view.interactiveMode) {
-		// AI mode: Guild acts once between global shipment and movement steps.
 		runShipmentStep(nonGuildOrder);
 		executeShipmentForPlayer(guildIndex);
 		executeMovementForPlayer(guildIndex);
