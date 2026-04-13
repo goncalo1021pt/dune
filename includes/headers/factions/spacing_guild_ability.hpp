@@ -14,7 +14,8 @@ public:
 
 	// --- Shipment Phase hooks ---
 	int getShipmentCost(const territory* terr, int unitCount) const override;
-	void onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount) override;
+	void onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount,
+		const std::string& destinationTerritory, bool fromOffPlanet) override;
 	bool canCrossShip() const override;
 	bool canShipToReserves() const override;
 

@@ -14,6 +14,7 @@ struct unitStack {
 	int factionOwner;		// faction index (0-5)
 	int normal_units;
 	int elite_units; 		// Fedaykin or Sardaukar
+	bool advisor;			// Bene Gesserit peaceful advisor state
 	int sector;				// which sector of the territory these units occupy
 							// matches one entry from the territory's sectors[] list
 };
@@ -71,12 +72,18 @@ class GameMap {
 		//         territories or when sector precision doesn't matter.
 		// ---------------------------------------------------------------
 		void addUnitsToTerritory(const std::string& territoryName, int factionIndex,
+		                         int normalUnits, int eliteUnits, int sector,
+		                         bool asAdvisor);
+		void addUnitsToTerritory(const std::string& territoryName, int factionIndex,
 		                         int normalUnits, int eliteUnits, int sector);
 
 		// Remove units from a specific (faction, sector) stack.
 		// Use when precise sector removal is needed (storm damage, worm).
 		void removeUnitsFromTerritorySector(const std::string& territoryName, int factionIndex,
 		                                    int normalUnits, int eliteUnits, int sector);
+		void removeUnitsFromTerritorySector(const std::string& territoryName, int factionIndex,
+		                                    int normalUnits, int eliteUnits, int sector,
+		                                    bool fromAdvisorStack);
 
 		// Remove units from a faction regardless of sector (battle losses,
 		// general recall). Removes from stacks in insertion order.
@@ -86,14 +93,22 @@ class GameMap {
 		// Total units for a faction in the whole territory (all sectors summed).
 		// Used by battle resolution, spice collection, control checks.
 		int getUnitsInTerritory(const std::string& territoryName, int factionIndex) const;
+		int getAdvisorUnitsInTerritory(const std::string& territoryName, int factionIndex) const;
+		int getCombatUnitsInTerritory(const std::string& territoryName, int factionIndex) const;
 
 		// Units for a faction in a specific sector only.
 		int getUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
+		int getAdvisorUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
+		int getCombatUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
 
 	// Get breakdown of unit types (for battle strength calculation)
 	// Returns pair of (normal units, elite units) in territory
 	std::pair<int, int> getUnitBreakdown(const std::string& territoryName, int factionIndex) const;
+	std::pair<int, int> getCombatUnitBreakdown(const std::string& territoryName, int factionIndex) const;
 		int getEliteUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const;
+		int getAdvisorUnitsInTerritoryAllFactions(const std::string& territoryName) const;
+		int flipFightersToAdvisors(const std::string& territoryName, int factionIndex, int count = -1);
+		int flipAdvisorsToFighters(const std::string& territoryName, int factionIndex, int count = -1);
 
 		// ---------------------------------------------------------------
 		// Spice operations — sector-aware
@@ -147,7 +162,9 @@ class GameMap {
 		int getControllingFaction(const std::string& territoryName) const;
 		
 		int countFactionsInTerritory(const std::string& territoryName) const;
+		int countCombatFactionsInTerritory(const std::string& territoryName) const;
 		bool canAddFactionToTerritory(const std::string& territoryName, int factionIndex) const;
+		bool canAddAdvisorToTerritory(const std::string& territoryName, int factionIndex) const;
 		
 		// Utility methods
 		std::vector<std::string> getTerritoriesWithUnits(int factionIndex) const;

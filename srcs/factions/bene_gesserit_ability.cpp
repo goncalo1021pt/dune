@@ -32,13 +32,102 @@ void BeneGesseritAbility::placeStartingForces(PhaseContext& ctx) {
 	if (beneIndex < 0) return;
 
 	Player* bene = ctx.players[beneIndex];
-	if (bene->getUnitsReserve() > 0) {
-		ctx.map.addUnitsToTerritory("Polar Sink", beneIndex, 1, 0, -1);
-		bene->deployUnits(1);
+	if (bene->getUnitsReserve() <= 0) {
+		choosePrediction(ctx, beneIndex);
+		return;
 	}
 
-	if (ctx.logger) {
-		ctx.logger->logDebug("[Bene Gesserit] Starts with 1 force in Polar Sink, 19 in reserves, and 5 spice");
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		std::string chosenTerritory;
+		const auto& territories = ctx.map.getTerritories();
+
+		if (ctx.interactiveMode) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("=== BENE GESSERIT ADVANCED START PLACEMENT ===");
+				ctx.logger->logDebug("After Fremen placement, choose one territory for your starting peaceful advisor:");
+				for (size_t i = 0; i < territories.size(); ++i) {
+					ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + territories[i].name);
+				}
+				ctx.logger->logDebug("Choose territory by number or exact name: ");
+			}
+
+			while (true) {
+				std::string input;
+				std::getline(std::cin >> std::ws, input);
+
+				if (input.empty()) {
+					if (ctx.logger) ctx.logger->logDebug("Invalid choice. Try again: ");
+					continue;
+				}
+
+				bool matched = false;
+				try {
+					int idx = std::stoi(input);
+					if (idx >= 1 && idx <= static_cast<int>(territories.size())) {
+						chosenTerritory = territories[static_cast<size_t>(idx - 1)].name;
+						matched = true;
+					}
+				} catch (...) {
+				}
+
+				if (!matched) {
+					for (const auto& terr : territories) {
+						if (terr.name == input) {
+							chosenTerritory = terr.name;
+							matched = true;
+							break;
+						}
+					}
+				}
+
+				if (matched && ctx.map.canAddFactionToTerritory(chosenTerritory, beneIndex)) {
+					break;
+				}
+
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid territory (or occupied by two other factions). Try again: ");
+				}
+			}
+		} else {
+			for (const auto& terr : territories) {
+				if (ctx.map.canAddFactionToTerritory(terr.name, beneIndex) &&
+					ctx.map.countFactionsInTerritory(terr.name) == 0) {
+					chosenTerritory = terr.name;
+					break;
+				}
+			}
+
+			if (chosenTerritory.empty()) {
+				for (const auto& terr : territories) {
+					if (ctx.map.canAddFactionToTerritory(terr.name, beneIndex)) {
+						chosenTerritory = terr.name;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!chosenTerritory.empty()) {
+			bool aloneBeforePlacement = (ctx.map.countFactionsInTerritory(chosenTerritory) == 0);
+			ctx.map.addUnitsToTerritory(chosenTerritory, beneIndex, 1, 0, -1, !aloneBeforePlacement);
+			bene->deployUnits(1);
+
+			if (ctx.logger) {
+				if (aloneBeforePlacement) {
+					ctx.logger->logDebug("[Bene Gesserit][Advanced] Starting advisor placed in " + chosenTerritory +
+						" and flips to fighter (territory was empty)");
+				} else {
+					ctx.logger->logDebug("[Bene Gesserit][Advanced] Starting peaceful advisor placed in " + chosenTerritory);
+				}
+			}
+		}
+	} else {
+		ctx.map.addUnitsToTerritory("Polar Sink", beneIndex, 1, 0, -1);
+		bene->deployUnits(1);
+
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Bene Gesserit] Starts with 1 force in Polar Sink, 19 in reserves, and 5 spice");
+		}
 	}
 
 	choosePrediction(ctx, beneIndex);
@@ -48,17 +137,94 @@ int BeneGesseritAbility::getFreeRevivalsPerTurn() const {
 	return 1;
 }
 
-void BeneGesseritAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount) {
+bool BeneGesseritAbility::alwaysReceivesCharity() const {
+	return true;
+}
+
+bool BeneGesseritAbility::canUseWorthlessAsKarama() const {
+	return true;
+}
+
+void BeneGesseritAbility::beginTurn(int turnNumber) {
+	if (lockedTurn != turnNumber) {
+		lockedTurn = turnNumber;
+		lockedAdvisorTerritories.clear();
+	}
+}
+
+bool BeneGesseritAbility::canFlipAdvisorsToFightersThisTurn(PhaseContext& ctx, const std::string& territoryName) const {
+	if (lockedTurn != ctx.turnNumber || lockedAdvisorTerritories.count(territoryName) == 0) {
+		return true;
+	}
+
+	const territory* terr = ctx.map.getTerritory(territoryName);
+	if (!terr) return false;
+
+	for (const auto& stack : terr->unitsPresent) {
+		if (!stack.advisor && (stack.normal_units > 0 || stack.elite_units > 0)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+int BeneGesseritAbility::flipAdvisorsToFighters(PhaseContext& ctx, const std::string& territoryName) {
+	if (!canFlipAdvisorsToFightersThisTurn(ctx, territoryName)) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Bene Gesserit] Advisors in " + territoryName +
+				" cannot flip this turn while other forces remain.");
+		}
+		return 0;
+	}
+
+	int beneIndex = -1;
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		FactionAbility* ability = ctx.players[i]->getFactionAbility();
+		if (ability && ability->getFactionName() == "Bene Gesserit") {
+			beneIndex = static_cast<int>(i);
+			break;
+		}
+	}
+	if (beneIndex < 0) return 0;
+
+	int flipped = ctx.map.flipAdvisorsToFighters(territoryName, beneIndex);
+	if (flipped > 0 && ctx.logger) {
+		ctx.logger->logDebug("[Bene Gesserit] " + std::to_string(flipped) +
+			" advisor(s) flip to fighters in " + territoryName);
+	}
+	return flipped;
+}
+
+int BeneGesseritAbility::flipFightersToAdvisors(PhaseContext& ctx, const std::string& territoryName) {
+	int beneIndex = -1;
+	for (size_t i = 0; i < ctx.players.size(); ++i) {
+		FactionAbility* ability = ctx.players[i]->getFactionAbility();
+		if (ability && ability->getFactionName() == "Bene Gesserit") {
+			beneIndex = static_cast<int>(i);
+			break;
+		}
+	}
+	if (beneIndex < 0) return 0;
+
+	int flipped = ctx.map.flipFightersToAdvisors(territoryName, beneIndex);
+	if (flipped > 0 && ctx.logger) {
+		ctx.logger->logDebug("[Bene Gesserit] " + std::to_string(flipped) +
+			" fighter(s) flip to advisors in " + territoryName);
+	}
+	return flipped;
+}
+
+void BeneGesseritAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount,
+	const std::string& destinationTerritory, bool fromOffPlanet) {
 	(void)amount;
 	if (shippingFactionIndex < 0 || shippingFactionIndex >= static_cast<int>(ctx.players.size())) {
 		return;
 	}
-
-	// Rule exception: Spiritual Advisors does not trigger on Fremen shipments.
-	FactionAbility* shippingAbility = ctx.players[shippingFactionIndex]->getFactionAbility();
-	if (shippingAbility && shippingAbility->getFactionName() == "Fremen") {
+	if (!ctx.featureSettings.advancedFactionAbilities || !fromOffPlanet) {
 		return;
 	}
+
+	beginTurn(ctx.turnNumber);
 
 	int beneIndex = -1;
 	for (size_t i = 0; i < ctx.players.size(); ++i) {
@@ -81,7 +247,8 @@ void BeneGesseritAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingF
 	bool shipAdvisor = true;
 	if (ctx.interactiveMode) {
 		if (ctx.logger) {
-			ctx.logger->logDebug("[Bene Gesserit] Spiritual Advisors: ship 1 force to Polar Sink for free? (y/n): ");
+			ctx.logger->logDebug("[Bene Gesserit] Spiritual Advisors: ship 1 advisor to " +
+				destinationTerritory + " for free? (y/n): ");
 		}
 		while (true) {
 			std::string input;
@@ -105,15 +272,21 @@ void BeneGesseritAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingF
 
 	if (!shipAdvisor) return;
 
-	ctx.map.addUnitsToTerritory("Polar Sink", beneIndex, 1, 0, -1);
+	if (!ctx.map.canAddAdvisorToTerritory(destinationTerritory, beneIndex)) {
+		return;
+	}
+
+	ctx.map.addUnitsToTerritory(destinationTerritory, beneIndex, 1, 0, -1, true);
 	bene->deployUnits(1);
+	lockedAdvisorTerritories.insert(destinationTerritory);
+	lockedTurn = ctx.turnNumber;
 
 	if (ctx.logger) {
 		Event e(EventType::UNITS_SHIPPED,
-			"[Bene Gesserit] Spiritual Advisors ships 1 force to Polar Sink",
+			"[Bene Gesserit] Spiritual Advisors ships 1 advisor to " + destinationTerritory,
 			ctx.turnNumber, "SHIP_AND_MOVE");
 		e.playerFaction = "Bene Gesserit";
-		e.territory = "Polar Sink";
+		e.territory = destinationTerritory;
 		e.unitCount = 1;
 		e.spiceValue = 0;
 		ctx.logger->logEvent(e);

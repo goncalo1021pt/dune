@@ -11,14 +11,17 @@ void ChoamCharityPhase::execute(PhaseContext& ctx) {
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		int currentSpice = view.players[i]->getSpice();
 		FactionAbility* ability = ctx.getAbility(i);
+		const bool advancedAlwaysCharity =
+			ctx.featureSettings.advancedFactionAbilities && ability && ability->alwaysReceivesCharity();
 
-		bool shouldReceiveCharity = (currentSpice <= 1);
-		if (ability && ability->alwaysReceivesCharity()) {
-			shouldReceiveCharity = true;
+		int charityAmount = 0;
+		if (advancedAlwaysCharity) {
+			charityAmount = 2;
+		} else if (currentSpice <= 1) {
+			charityAmount = 2 - currentSpice;
 		}
 
-		if (shouldReceiveCharity && currentSpice < 2) {
-			int charityAmount = 2 - currentSpice;
+		if (charityAmount > 0) {
 			view.players[i]->addSpice(charityAmount);
 			
 			if (ctx.logger) {

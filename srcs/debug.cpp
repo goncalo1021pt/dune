@@ -43,6 +43,20 @@ void GameDebugger::printGameState() {
 	std::cout << "\n[PLAYERS]\n";
 	for (int i = 0; i < gameInstance->getPlayerCount(); i++) {
 		const Player* p = gameInstance->getPlayer(i);
+		const auto& territories = gameInstance->getTerritories();
+		int deployedFighters = 0;
+		int deployedAdvisors = 0;
+		for (const auto& territory : territories) {
+			for (const auto& stack : territory.unitsPresent) {
+				if (stack.factionOwner != i) continue;
+				int stackTotal = stack.normal_units + stack.elite_units;
+				if (stack.advisor) {
+					deployedAdvisors += stackTotal;
+				} else {
+					deployedFighters += stackTotal;
+				}
+			}
+		}
 		
 		std::cout << "  " << std::left << std::setw(12) << p->getFactionName() << ": ";
 		std::cout << std::right << std::setw(2) << p->getSpice() << " spice | ";
@@ -53,6 +67,9 @@ void GameDebugger::printGameState() {
 		}
 		
 		std::cout << " | Deployed: " << std::setw(2) << p->getUnitsDeployed();
+		if (deployedAdvisors > 0 || p->getFactionName() == "Bene Gesserit") {
+			std::cout << " [F:" << deployedFighters << " A:" << deployedAdvisors << "]";
+		}
 		std::cout << "\n";
 
 		// Leaders
@@ -113,6 +130,9 @@ void GameDebugger::printGameState() {
 			if (hasTroops) {
 				bool first = true;
 				for (const auto& stack : territory.unitsPresent) {
+					if (stack.normal_units <= 0 && stack.elite_units <= 0) {
+						continue;
+					}
 					if (!first) std::cout << ", ";
 					
 					// Get faction name using centralized utility
@@ -122,6 +142,7 @@ void GameDebugger::printGameState() {
 					if (stack.elite_units > 0) {
 						std::cout << " (" << stack.elite_units << "e)";
 					}
+					std::cout << (stack.advisor ? " [advisor]" : " [fighter]");
 					first = false;
 				}
 			}

@@ -703,14 +703,14 @@ void BattlePhase::execute(PhaseContext& ctx) {
 			if (terr.name == "Polar Sink") continue;
 			
 			// Check if this player has units here
-			int playerUnits = view.map.getUnitsInTerritory(terr.name, playerIdx);
+			int playerUnits = view.map.getCombatUnitsInTerritory(terr.name, playerIdx);
 			if (playerUnits == 0) continue;
 			
 			// Check if contested (other players also have units)
 			bool contested = false;
 			for (size_t i = 0; i < view.players.size(); ++i) {
 				if (i != (size_t)playerIdx) {
-					int otherUnits = view.map.getUnitsInTerritory(terr.name, i);
+					int otherUnits = view.map.getCombatUnitsInTerritory(terr.name, i);
 					if (otherUnits > 0) {
 						contested = true;
 						break;
@@ -787,7 +787,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	std::vector<int> defenderIndices;
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		if (i != (size_t)attackerIdx) {
-			int units = view.map.getUnitsInTerritory(territoryName, i);
+			int units = view.map.getCombatUnitsInTerritory(territoryName, i);
 			if (units > 0) {
 				defenderIndices.push_back(i);
 			}
@@ -841,7 +841,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			return;
 		}
 		if (lockedElement.active && lockedElement.element == BattleElementToPeek::DIAL) {
-			int units = view.map.getUnitsInTerritory(territoryName, atreidesPeek.opponentIdx);
+			int units = view.map.getCombatUnitsInTerritory(territoryName, atreidesPeek.opponentIdx);
 			lockedElement.dialValue = getBattleWheelChoice(ctx, atreidesPeek.opponentIdx, units,
 				territoryName, opponentEliteStrength);
 			lockedElement.hasDial = true;
@@ -869,9 +869,9 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		int attackerLeaderPower = attackerChoice.leaderPower;
 
 		// Attacker survives with remaining strength after dialing.
-		int attackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
+		int attackerUnits = view.map.getCombatUnitsInTerritory(territoryName, attackerIdx);
 		int wheelValue = getBattleWheelChoice(ctx, attackerIdx, attackerUnits, territoryName, attackerEliteStrength);
-		auto [normalUnits, eliteUnits] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [normalUnits, eliteUnits] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
 		int unitStrength = calculateUnitStrength(wheelValue, normalUnits, eliteUnits, attackerEliteStrength);
 
 		if (ctx.logger) {
@@ -881,7 +881,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 				+ " (leader) = " + std::to_string(unitStrength + attackerLeaderPower));
 		}
 
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
 		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
 		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
 		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
@@ -890,7 +890,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
 		
 		// Get defender's breakdown for full removal
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
 		
 		if (ctx.logger) {
@@ -1046,7 +1046,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		if (thisIsLockedOpponent && lockedElement.hasDial) {
 			outDialValue = lockedElement.dialValue;
 		} else {
-			int units = view.map.getUnitsInTerritory(territoryName, playerIdx);
+			int units = view.map.getCombatUnitsInTerritory(territoryName, playerIdx);
 			outDialValue = getBattleWheelChoice(ctx, playerIdx, units, territoryName, eliteStrength);
 		}
 
@@ -1130,10 +1130,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	}
 
 	// Calculate actual unit strength (elite units count as 2x unless faction matchup modifies it)
-	int attackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
-	int defenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
-	auto [normalUnits, eliteUnits] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-	auto [defNormalUnits, defEliteUnits] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+	int attackerUnits = view.map.getCombatUnitsInTerritory(territoryName, attackerIdx);
+	int defenderUnits = view.map.getCombatUnitsInTerritory(territoryName, defenderIdx);
+	auto [normalUnits, eliteUnits] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+	auto [defNormalUnits, defEliteUnits] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 	int unitStrength = calculateUnitStrength(wheelValue, normalUnits, eliteUnits, attackerEliteStrength);
 	int defUnitStrength = calculateUnitStrength(defWheelValue, defNormalUnits, defEliteUnits, defenderEliteStrength);
 
@@ -1237,8 +1237,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 		
 		// Winner (attacker) keeps totalStrength - dialedStrength
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		
 		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
 		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
@@ -1270,8 +1270,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 		
 		// Calculate unit breakdowns for removal
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		
 		int totalDefenderStrength = calculateUnitStrength(defenderUnits, defNormalUnits, defEliteUnits, defenderEliteStrength);
 		int defenderRemainingStrength = std::max(0, totalDefenderStrength - defUnitStrength);
@@ -1303,8 +1303,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 		
 		// Winner (attacker in tie) keeps totalStrength - dialedStrength
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		
 		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
 		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
@@ -1372,7 +1372,7 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 	int maxStrength = 0;
 	int normalAvailable = 0, eliteAvailable = 0;
 	if (!territoryName.empty()) {
-		auto [n, e] = view.map.getUnitBreakdown(territoryName, playerIndex);
+		auto [n, e] = view.map.getCombatUnitBreakdown(territoryName, playerIndex);
 		normalAvailable = n;
 		eliteAvailable = e;
 		maxStrength = calculateUnitStrength(maxUnits, n, e, eliteStrength);
