@@ -21,9 +21,15 @@ std::vector<std::string> FactionAbility::getValidDeploymentTerritories(PhaseCont
 bool FactionAbility::canCrossShip() const { return false; }
 bool FactionAbility::canShipToReserves() const { return false; }
 void FactionAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount) {
+	onOtherFactionShipped(ctx, shippingFactionIndex, amount, "", false);
+}
+void FactionAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount,
+	const std::string& destinationTerritory, bool fromOffPlanet) {
 	(void)ctx;
 	(void)shippingFactionIndex;
 	(void)amount;
+	(void)destinationTerritory;
+	(void)fromOffPlanet;
 }
 
 int FactionAbility::getBaseMovementRange() const { return 1; }
@@ -36,6 +42,7 @@ void FactionAbility::onCardWonAtAuction(PhaseContext& ctx) { (void)ctx; }
 void FactionAbility::onOtherFactionPaidForCard(PhaseContext& ctx, int payingFactionIndex, int amount) { (void)ctx; (void)payingFactionIndex; (void)amount; }
 
 bool FactionAbility::alwaysReceivesCharity() const { return false; }
+bool FactionAbility::canUseWorthlessAsKarama() const { return false; }
 
 int FactionAbility::getNormalUnitStrength() const { return 1; }
 bool FactionAbility::requiresSpiceForFullUnitStrength() const { return true; }

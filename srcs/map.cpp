@@ -139,7 +139,8 @@ int GameMap::firstSafeSector(const territory* dest, int stormSector) {
 // =============================================================================
 
 void GameMap::addUnitsToTerritory(const std::string& territoryName, int factionIndex,
-                                   int normalUnits, int eliteUnits, int sector) {
+								   int normalUnits, int eliteUnits, int sector,
+								   bool asAdvisor) {
 	territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return;
 
@@ -149,7 +150,8 @@ void GameMap::addUnitsToTerritory(const std::string& territoryName, int factionI
 	}
 
 	for (auto& stack : terr->unitsPresent) {
-		if (stack.factionOwner == factionIndex && stack.sector == effectiveSector) {
+		if (stack.factionOwner == factionIndex && stack.sector == effectiveSector &&
+		    stack.advisor == asAdvisor) {
 			stack.normal_units += normalUnits;
 			stack.elite_units  += eliteUnits;
 			return;
@@ -160,17 +162,30 @@ void GameMap::addUnitsToTerritory(const std::string& territoryName, int factionI
 	newStack.factionOwner  = factionIndex;
 	newStack.normal_units  = normalUnits;
 	newStack.elite_units   = eliteUnits;
+	newStack.advisor       = asAdvisor;
 	newStack.sector        = effectiveSector;
 	terr->unitsPresent.push_back(newStack);
 }
 
+void GameMap::addUnitsToTerritory(const std::string& territoryName, int factionIndex,
+	int normalUnits, int eliteUnits, int sector) {
+	addUnitsToTerritory(territoryName, factionIndex, normalUnits, eliteUnits, sector, false);
+}
+
 void GameMap::removeUnitsFromTerritorySector(const std::string& territoryName, int factionIndex,
                                               int normalUnits, int eliteUnits, int sector) {
+	removeUnitsFromTerritorySector(territoryName, factionIndex, normalUnits, eliteUnits, sector, false);
+}
+
+void GameMap::removeUnitsFromTerritorySector(const std::string& territoryName, int factionIndex,
+                                              int normalUnits, int eliteUnits, int sector,
+                                              bool fromAdvisorStack) {
 	territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return;
 
 	for (auto& stack : terr->unitsPresent) {
-		if (stack.factionOwner == factionIndex && stack.sector == sector) {
+		if (stack.factionOwner == factionIndex && stack.sector == sector &&
+		    stack.advisor == fromAdvisorStack) {
 			stack.normal_units = std::max(0, stack.normal_units - normalUnits);
 			stack.elite_units  = std::max(0, stack.elite_units  - eliteUnits);
 			break;
@@ -192,7 +207,7 @@ void GameMap::removeUnitsFromTerritory(const std::string& territoryName, int fac
 	int eliteLeft  = eliteUnits;
 
 	for (auto& stack : terr->unitsPresent) {
-		if (stack.factionOwner != factionIndex) continue;
+		if (stack.factionOwner != factionIndex || stack.advisor) continue;
 		if (normalLeft <= 0 && eliteLeft <= 0) break;
 
 		int takeNormal = std::min(normalLeft, stack.normal_units);
@@ -222,16 +237,69 @@ int GameMap::getUnitsInTerritory(const std::string& territoryName, int factionIn
 	return total;
 }
 
+int GameMap::getAdvisorUnitsInTerritory(const std::string& territoryName, int factionIndex) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int total = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex && stack.advisor) {
+			total += stack.normal_units;
+		}
+	}
+	return total;
+}
+
+int GameMap::getCombatUnitsInTerritory(const std::string& territoryName, int factionIndex) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int total = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex && !stack.advisor) {
+			total += stack.normal_units + stack.elite_units;
+		}
+	}
+	return total;
+}
+
 int GameMap::getUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const {
 	const territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return 0;
 
+	int total = 0;
 	for (const auto& stack : terr->unitsPresent) {
 		if (stack.factionOwner == factionIndex && stack.sector == sector) {
-			return stack.normal_units + stack.elite_units;
+			total += stack.normal_units + stack.elite_units;
 		}
 	}
-	return 0;
+	return total;
+}
+
+int GameMap::getAdvisorUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int total = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex && stack.sector == sector && stack.advisor) {
+			total += stack.normal_units;
+		}
+	}
+	return total;
+}
+
+int GameMap::getCombatUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int total = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex && stack.sector == sector && !stack.advisor) {
+			total += stack.normal_units + stack.elite_units;
+		}
+	}
+	return total;
 }
 
 int GameMap::getEliteUnitsInTerritorySector(const std::string& territoryName, int factionIndex, int sector) const {
@@ -259,6 +327,90 @@ std::pair<int, int> GameMap::getUnitBreakdown(const std::string& territoryName, 
 		}
 	}
 	return {normalUnits, eliteUnits};
+}
+
+std::pair<int, int> GameMap::getCombatUnitBreakdown(const std::string& territoryName, int factionIndex) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return {0, 0};
+
+	int normalUnits = 0;
+	int eliteUnits = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner == factionIndex && !stack.advisor) {
+			normalUnits += stack.normal_units;
+			eliteUnits += stack.elite_units;
+		}
+	}
+	return {normalUnits, eliteUnits};
+}
+
+int GameMap::getAdvisorUnitsInTerritoryAllFactions(const std::string& territoryName) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int total = 0;
+	for (const auto& stack : terr->unitsPresent) {
+		if (stack.advisor) {
+			total += stack.normal_units;
+		}
+	}
+	return total;
+}
+
+int GameMap::flipFightersToAdvisors(const std::string& territoryName, int factionIndex, int count) {
+	territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int remaining = count;
+	int flipped = 0;
+	for (auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner != factionIndex || stack.advisor || stack.normal_units <= 0) continue;
+		if (remaining == 0) break;
+
+		int move = stack.normal_units;
+		if (remaining > 0) {
+			move = std::min(move, remaining);
+			remaining -= move;
+		}
+		stack.normal_units -= move;
+		flipped += move;
+		addUnitsToTerritory(territoryName, factionIndex, move, 0, stack.sector, true);
+	}
+
+	terr->unitsPresent.erase(
+		std::remove_if(terr->unitsPresent.begin(), terr->unitsPresent.end(),
+			[](const unitStack& s) { return s.normal_units == 0 && s.elite_units == 0; }),
+		terr->unitsPresent.end());
+
+	return flipped;
+}
+
+int GameMap::flipAdvisorsToFighters(const std::string& territoryName, int factionIndex, int count) {
+	territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return 0;
+
+	int remaining = count;
+	int flipped = 0;
+	for (auto& stack : terr->unitsPresent) {
+		if (stack.factionOwner != factionIndex || !stack.advisor || stack.normal_units <= 0) continue;
+		if (remaining == 0) break;
+
+		int move = stack.normal_units;
+		if (remaining > 0) {
+			move = std::min(move, remaining);
+			remaining -= move;
+		}
+		stack.normal_units -= move;
+		flipped += move;
+		addUnitsToTerritory(territoryName, factionIndex, move, 0, stack.sector, false);
+	}
+
+	terr->unitsPresent.erase(
+		std::remove_if(terr->unitsPresent.begin(), terr->unitsPresent.end(),
+			[](const unitStack& s) { return s.normal_units == 0 && s.elite_units == 0; }),
+		terr->unitsPresent.end());
+
+	return flipped;
 }
 
 // =============================================================================
@@ -576,6 +728,7 @@ bool GameMap::isControlled(const std::string& territoryName, int factionIndex) c
 
 	for (const auto& stack : terr->unitsPresent) {
 		if (stack.factionOwner == factionIndex &&
+		    !stack.advisor &&
 		    (stack.normal_units > 0 || stack.elite_units > 0)) {
 			return true;
 		}
@@ -591,6 +744,7 @@ int GameMap::getControllingFaction(const std::string& territoryName) const {
 	int controllingFaction = -1;
 
 	for (const auto& stack : terr->unitsPresent) {
+		if (stack.advisor) continue;
 		int total = stack.normal_units + stack.elite_units;
 		if (total > maxUnits) {
 			maxUnits = total;
@@ -601,11 +755,16 @@ int GameMap::getControllingFaction(const std::string& territoryName) const {
 }
 
 int GameMap::countFactionsInTerritory(const std::string& territoryName) const {
+	return countCombatFactionsInTerritory(territoryName);
+}
+
+int GameMap::countCombatFactionsInTerritory(const std::string& territoryName) const {
 	const territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return 0;
 
 	std::set<int> factionsPresent;
 	for (const auto& stack : terr->unitsPresent) {
+		if (stack.advisor) continue;
 		if (stack.normal_units > 0 || stack.elite_units > 0) {
 			factionsPresent.insert(stack.factionOwner);
 		}
@@ -620,10 +779,17 @@ bool GameMap::canAddFactionToTerritory(const std::string& territoryName, int fac
 	if (terr->terrain == terrainType::northPole) return true;
 
 	for (const auto& stack : terr->unitsPresent) {
-		if (stack.factionOwner == factionIndex) return true;
+		if (stack.factionOwner == factionIndex && !stack.advisor) return true;
 	}
 
-	return countFactionsInTerritory(territoryName) < 2;
+	return countCombatFactionsInTerritory(territoryName) < 2;
+}
+
+bool GameMap::canAddAdvisorToTerritory(const std::string& territoryName, int factionIndex) const {
+	const territory* terr = getTerritory(territoryName);
+	if (terr == nullptr) return false;
+	(void)factionIndex;
+	return true;
 }
 
 std::vector<std::string> GameMap::getTerritoriesWithUnits(int factionIndex) const {

@@ -89,7 +89,8 @@ void removeOneCardInstance(std::vector<std::string>& cards, const std::string& c
 
 std::string selectBattleCard(PhaseContext& ctx, Player* player,
 	const std::vector<std::string>& available,
-	const std::string& label) {
+	const std::string& label,
+	bool allowNone = true) {
 	if (available.empty()) {
 		if (ctx.logger) {
 			ctx.logger->logDebug(player->getFactionName() + " has no " + label + " cards.");
@@ -104,11 +105,17 @@ std::string selectBattleCard(PhaseContext& ctx, Player* player,
 
 	if (ctx.logger) {
 		ctx.logger->logDebug(player->getFactionName() + ", choose a " + label + " card:");
-		ctx.logger->logDebug("  0. None");
+		if (allowNone) {
+			ctx.logger->logDebug("  0. None");
+		}
 		for (size_t i = 0; i < available.size(); ++i) {
 			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + available[i]);
 		}
-		ctx.logger->logDebug("Choose (0-" + std::to_string(available.size()) + "): ");
+		if (allowNone) {
+			ctx.logger->logDebug("Choose (0-" + std::to_string(available.size()) + "): ");
+		} else {
+			ctx.logger->logDebug("Choose (1-" + std::to_string(available.size()) + "): ");
+		}
 	}
 
 	while (true) {
@@ -116,7 +123,7 @@ std::string selectBattleCard(PhaseContext& ctx, Player* player,
 		std::getline(std::cin, input);
 		try {
 			int choice = std::stoi(input);
-			if (choice == 0) {
+			if (allowNone && choice == 0) {
 				return "";
 			}
 			if (choice >= 1 && choice <= static_cast<int>(available.size())) {
@@ -183,12 +190,24 @@ struct BattleLeaderChoice {
 	int leaderPower = 0;
 };
 
-BattleLeaderChoice selectBattleLeaderChoice(PhaseContext& ctx, Player* player) {
+BattleLeaderChoice selectBattleLeaderChoice(PhaseContext& ctx, Player* player,
+	bool forceCheapHero = false, bool forbidCheapHero = false) {
 	BattleLeaderChoice choice;
 	const auto& leaders = player->getAliveLeaders();
-	const bool cheapHeroAvailable = hasCheapHeroCard(player);
+	const bool cheapHeroAvailable = hasCheapHeroCard(player) && !forbidCheapHero;
 
 	if (leaders.empty() && !cheapHeroAvailable) {
+		return choice;
+	}
+
+	if (forceCheapHero) {
+		if (!hasCheapHeroCard(player)) {
+			return choice;
+		}
+		choice.valid = true;
+		choice.usedCheapHero = true;
+		choice.leaderName = "Cheap Hero";
+		choice.leaderPower = 0;
 		return choice;
 	}
 
@@ -292,6 +311,189 @@ struct LockedBattleElement {
 	bool hasDial = false;
 };
 
+enum class BeneVoiceTarget {
+	WEAPON_POISON,
+	WEAPON_PROJECTILE,
+	WEAPON_LASGUN,
+	DEFENSE_SHIELD,
+	DEFENSE_SNOOPER,
+	WORTHLESS,
+	CHEAP_HERO
+};
+
+struct BeneVoiceState {
+	bool active = false;
+	int beneIdx = -1;
+	int targetIdx = -1;
+	bool demandPlay = false;
+	BeneVoiceTarget target = BeneVoiceTarget::WEAPON_POISON;
+	bool worthlessSatisfied = false;
+};
+
+std::string beneVoiceTargetToString(BeneVoiceTarget target) {
+	switch (target) {
+		case BeneVoiceTarget::WEAPON_POISON: return "poison weapon";
+		case BeneVoiceTarget::WEAPON_PROJECTILE: return "projectile weapon";
+		case BeneVoiceTarget::WEAPON_LASGUN: return "lasgun";
+		case BeneVoiceTarget::DEFENSE_SHIELD: return "shield";
+		case BeneVoiceTarget::DEFENSE_SNOOPER: return "snooper";
+		case BeneVoiceTarget::WORTHLESS: return "worthless card";
+		case BeneVoiceTarget::CHEAP_HERO: return "cheap hero";
+	}
+	return "unknown";
+}
+
+bool cardMatchesVoiceTarget(const std::string& card, BeneVoiceTarget target) {
+	treacheryCardType t = getTreacheryTypeFromName(card);
+	switch (target) {
+		case BeneVoiceTarget::WEAPON_POISON: return t == treacheryCardType::WEAPON_POISON;
+		case BeneVoiceTarget::WEAPON_PROJECTILE: return t == treacheryCardType::WEAPON_PROJECTILE;
+		case BeneVoiceTarget::WEAPON_LASGUN: return card == "Lasgun";
+		case BeneVoiceTarget::DEFENSE_SHIELD: return card == "Shield";
+		case BeneVoiceTarget::DEFENSE_SNOOPER: return card == "Snooper";
+		case BeneVoiceTarget::WORTHLESS: return t == treacheryCardType::WORTHLESS;
+		case BeneVoiceTarget::CHEAP_HERO: return card == "Cheap Hero";
+	}
+	return false;
+}
+
+bool anyMatchingCard(const std::vector<std::string>& cards, BeneVoiceTarget target) {
+	for (const std::string& c : cards) {
+		if (cardMatchesVoiceTarget(c, target)) return true;
+	}
+	return false;
+}
+
+bool canComplyWithBeneVoice(const Player* targetPlayer, const BeneVoiceState& voice) {
+	if (!voice.active || !voice.demandPlay) return true;
+
+	if (voice.target == BeneVoiceTarget::CHEAP_HERO) {
+		return hasCheapHeroCard(targetPlayer);
+	}
+
+	if (voice.target == BeneVoiceTarget::WORTHLESS) {
+		std::vector<std::string> offense = collectBattleCards(targetPlayer, true);
+		std::vector<std::string> defense = collectBattleCards(targetPlayer, false);
+		return anyMatchingCard(offense, voice.target) || anyMatchingCard(defense, voice.target);
+	}
+
+	if (voice.target == BeneVoiceTarget::DEFENSE_SHIELD || voice.target == BeneVoiceTarget::DEFENSE_SNOOPER) {
+		std::vector<std::string> defense = collectBattleCards(targetPlayer, false);
+		return anyMatchingCard(defense, voice.target);
+	}
+
+	std::vector<std::string> offense = collectBattleCards(targetPlayer, true);
+	return anyMatchingCard(offense, voice.target);
+}
+
+BeneVoiceState prepareBeneVoiceForBattle(PhaseContext& ctx, int attackerIdx, int defenderIdx,
+	Player* attacker, Player* defender) {
+	BeneVoiceState voice;
+
+	int beneIdx = -1;
+	int targetIdx = -1;
+	Player* benePlayer = nullptr;
+	Player* targetPlayer = nullptr;
+
+	if (attacker->getFactionName() == "Bene Gesserit") {
+		beneIdx = attackerIdx;
+		targetIdx = defenderIdx;
+		benePlayer = attacker;
+		targetPlayer = defender;
+	} else if (defender->getFactionName() == "Bene Gesserit") {
+		beneIdx = defenderIdx;
+		targetIdx = attackerIdx;
+		benePlayer = defender;
+		targetPlayer = attacker;
+	} else {
+		return voice;
+	}
+
+	voice.active = true;
+	voice.beneIdx = beneIdx;
+	voice.targetIdx = targetIdx;
+
+	if (!ctx.interactiveMode) {
+		voice.active = false;
+		return voice;
+	}
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Bene Voice] Use Voice against " + targetPlayer->getFactionName() + " this battle? (y/n): ");
+	}
+	std::string useVoice;
+	std::getline(std::cin >> std::ws, useVoice);
+	std::string lowered = toLower(useVoice);
+	if (!(lowered == "y" || lowered == "yes")) {
+		voice.active = false;
+		return voice;
+	}
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Bene Voice] Command type:");
+		ctx.logger->logDebug("  1. PLAY poison weapon");
+		ctx.logger->logDebug("  2. DON'T PLAY poison weapon");
+		ctx.logger->logDebug("  3. PLAY projectile weapon");
+		ctx.logger->logDebug("  4. DON'T PLAY projectile weapon");
+		ctx.logger->logDebug("  5. PLAY lasgun");
+		ctx.logger->logDebug("  6. DON'T PLAY lasgun");
+		ctx.logger->logDebug("  7. PLAY shield");
+		ctx.logger->logDebug("  8. DON'T PLAY shield");
+		ctx.logger->logDebug("  9. PLAY snooper");
+		ctx.logger->logDebug("  10. DON'T PLAY snooper");
+		ctx.logger->logDebug("  11. PLAY worthless card");
+		ctx.logger->logDebug("  12. DON'T PLAY worthless card");
+		ctx.logger->logDebug("  13. PLAY cheap hero");
+		ctx.logger->logDebug("  14. DON'T PLAY cheap hero");
+		ctx.logger->logDebug("Choose (1-14): ");
+	}
+
+	int cmd = 0;
+	while (true) {
+		std::string input;
+		std::getline(std::cin >> std::ws, input);
+		try {
+			int pick = std::stoi(input);
+			if (pick >= 1 && pick <= 14) {
+				cmd = pick;
+				break;
+			}
+		} catch (...) {
+		}
+		if (ctx.logger) {
+			ctx.logger->logDebug("Invalid input. Choose (1-14): ");
+		}
+	}
+
+	voice.demandPlay = (cmd % 2 == 1);
+	switch (cmd) {
+		case 1: case 2: voice.target = BeneVoiceTarget::WEAPON_POISON; break;
+		case 3: case 4: voice.target = BeneVoiceTarget::WEAPON_PROJECTILE; break;
+		case 5: case 6: voice.target = BeneVoiceTarget::WEAPON_LASGUN; break;
+		case 7: case 8: voice.target = BeneVoiceTarget::DEFENSE_SHIELD; break;
+		case 9: case 10: voice.target = BeneVoiceTarget::DEFENSE_SNOOPER; break;
+		case 11: case 12: voice.target = BeneVoiceTarget::WORTHLESS; break;
+		case 13: case 14: voice.target = BeneVoiceTarget::CHEAP_HERO; break;
+	}
+
+	if (!canComplyWithBeneVoice(targetPlayer, voice) && voice.demandPlay) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Bene Voice] Opponent cannot comply with command \"PLAY " +
+				beneVoiceTargetToString(voice.target) + "\" and may play freely.");
+		}
+		voice.active = false;
+		return voice;
+	}
+
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Bene Voice] Command issued: " + std::string(voice.demandPlay ? "PLAY " : "DON'T PLAY ") +
+			beneVoiceTargetToString(voice.target));
+	}
+
+	(void)benePlayer;
+	return voice;
+}
+
 std::string battleElementToString(BattleElementToPeek element) {
 	switch (element) {
 		case BattleElementToPeek::LEADER: return "leader";
@@ -364,7 +566,8 @@ AtreidesPeekState prepareAtreidesPeekForBattle(PhaseContext& ctx, int attackerId
 
 bool lockOpponentElementForAtreides(PhaseContext& ctx, const AtreidesPeekState& peek,
 	Player* opponent,
-	LockedBattleElement& locked) {
+	LockedBattleElement& locked,
+	BeneVoiceState& voice) {
 	if (!peek.active) {
 		return true;
 	}
@@ -379,7 +582,11 @@ bool lockOpponentElementForAtreides(PhaseContext& ctx, const AtreidesPeekState& 
 
 	switch (peek.element) {
 		case BattleElementToPeek::LEADER: {
-			BattleLeaderChoice choice = selectBattleLeaderChoice(ctx, opponent);
+			const bool voiceApplies = voice.active && peek.opponentIdx == voice.targetIdx &&
+				voice.target == BeneVoiceTarget::CHEAP_HERO;
+			BattleLeaderChoice choice = selectBattleLeaderChoice(ctx, opponent,
+				voiceApplies && voice.demandPlay,
+				voiceApplies && !voice.demandPlay);
 			if (!choice.valid) {
 				return false;
 			}
@@ -396,8 +603,29 @@ bool lockOpponentElementForAtreides(PhaseContext& ctx, const AtreidesPeekState& 
 		}
 		case BattleElementToPeek::WEAPON: {
 			std::vector<std::string> offenseChoices = collectBattleCards(opponent, true);
+			if (voice.active && peek.opponentIdx == voice.targetIdx) {
+				std::vector<std::string> filtered;
+				const bool affectsOffense =
+					(voice.target == BeneVoiceTarget::WEAPON_POISON ||
+					 voice.target == BeneVoiceTarget::WEAPON_PROJECTILE ||
+					 voice.target == BeneVoiceTarget::WEAPON_LASGUN ||
+					 voice.target == BeneVoiceTarget::WORTHLESS);
+				for (const std::string& c : offenseChoices) {
+					bool match = cardMatchesVoiceTarget(c, voice.target);
+					if ((voice.demandPlay && match) || (!voice.demandPlay && !match)) {
+						filtered.push_back(c);
+					}
+				}
+				if (affectsOffense && (!filtered.empty() || !voice.demandPlay)) {
+					offenseChoices = filtered;
+				}
+			}
 			locked.weapon = selectBattleCard(ctx, opponent, offenseChoices, "offense (locked)");
 			locked.hasWeapon = true;
+			if (voice.active && voice.demandPlay && voice.target == BeneVoiceTarget::WORTHLESS &&
+				peek.opponentIdx == voice.targetIdx && isWorthlessCard(locked.weapon)) {
+				voice.worthlessSatisfied = true;
+			}
 			if (ctx.logger) {
 				ctx.logger->logDebug("[Atreides Prescience] Locked weapon: " +
 					(locked.weapon.empty() ? "None" : locked.weapon));
@@ -406,8 +634,28 @@ bool lockOpponentElementForAtreides(PhaseContext& ctx, const AtreidesPeekState& 
 		}
 		case BattleElementToPeek::DEFENSE: {
 			std::vector<std::string> defenseChoices = collectBattleCards(opponent, false);
+			if (voice.active && peek.opponentIdx == voice.targetIdx) {
+				std::vector<std::string> filtered;
+				const bool affectsDefense =
+					(voice.target == BeneVoiceTarget::DEFENSE_SHIELD ||
+					 voice.target == BeneVoiceTarget::DEFENSE_SNOOPER ||
+					 voice.target == BeneVoiceTarget::WORTHLESS);
+				for (const std::string& c : defenseChoices) {
+					bool match = cardMatchesVoiceTarget(c, voice.target);
+					if ((voice.demandPlay && match) || (!voice.demandPlay && !match)) {
+						filtered.push_back(c);
+					}
+				}
+				if (affectsDefense && (!filtered.empty() || !voice.demandPlay)) {
+					defenseChoices = filtered;
+				}
+			}
 			locked.defense = selectBattleCard(ctx, opponent, defenseChoices, "defense (locked)");
 			locked.hasDefense = true;
+			if (voice.active && voice.demandPlay && voice.target == BeneVoiceTarget::WORTHLESS &&
+				peek.opponentIdx == voice.targetIdx && isWorthlessCard(locked.defense)) {
+				voice.worthlessSatisfied = true;
+			}
 			if (ctx.logger) {
 				ctx.logger->logDebug("[Atreides Prescience] Locked defense: " +
 					(locked.defense.empty() ? "None" : locked.defense));
@@ -455,14 +703,14 @@ void BattlePhase::execute(PhaseContext& ctx) {
 			if (terr.name == "Polar Sink") continue;
 			
 			// Check if this player has units here
-			int playerUnits = view.map.getUnitsInTerritory(terr.name, playerIdx);
+			int playerUnits = view.map.getCombatUnitsInTerritory(terr.name, playerIdx);
 			if (playerUnits == 0) continue;
 			
 			// Check if contested (other players also have units)
 			bool contested = false;
 			for (size_t i = 0; i < view.players.size(); ++i) {
 				if (i != (size_t)playerIdx) {
-					int otherUnits = view.map.getUnitsInTerritory(terr.name, i);
+					int otherUnits = view.map.getCombatUnitsInTerritory(terr.name, i);
 					if (otherUnits > 0) {
 						contested = true;
 						break;
@@ -539,7 +787,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	std::vector<int> defenderIndices;
 	for (size_t i = 0; i < view.players.size(); ++i) {
 		if (i != (size_t)attackerIdx) {
-			int units = view.map.getUnitsInTerritory(territoryName, i);
+			int units = view.map.getCombatUnitsInTerritory(territoryName, i);
 			if (units > 0) {
 				defenderIndices.push_back(i);
 			}
@@ -572,10 +820,16 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 
 	const std::string attackerFaction = attacker->getFactionName();
 	const std::string defenderFaction = defender->getFactionName();
-	const int attackerEliteStrength =
-		(attackerFaction == "Emperor" && defenderFaction == "Fremen") ? 1 : 2;
-	const int defenderEliteStrength =
-		(defenderFaction == "Emperor" && attackerFaction == "Fremen") ? 1 : 2;
+	int attackerEliteStrength = 1;
+	int defenderEliteStrength = 1;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		attackerEliteStrength =
+			(attackerFaction == "Emperor" && defenderFaction == "Fremen") ? 1 : 2;
+		defenderEliteStrength =
+			(defenderFaction == "Emperor" && attackerFaction == "Fremen") ? 1 : 2;
+	}
+	// Precedence when both are present: Bene Voice first, then Atreides question, then normal flow.
+	BeneVoiceState beneVoice = prepareBeneVoiceForBattle(ctx, attackerIdx, defenderIdx, attacker, defender);
 	AtreidesPeekState atreidesPeek =
 		prepareAtreidesPeekForBattle(ctx, attackerIdx, defenderIdx, attacker, defender);
 	LockedBattleElement lockedElement;
@@ -583,11 +837,11 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		Player* opponent = view.players[atreidesPeek.opponentIdx];
 		const int opponentEliteStrength =
 			(atreidesPeek.opponentIdx == attackerIdx) ? attackerEliteStrength : defenderEliteStrength;
-		if (!lockOpponentElementForAtreides(ctx, atreidesPeek, opponent, lockedElement)) {
+		if (!lockOpponentElementForAtreides(ctx, atreidesPeek, opponent, lockedElement, beneVoice)) {
 			return;
 		}
 		if (lockedElement.active && lockedElement.element == BattleElementToPeek::DIAL) {
-			int units = view.map.getUnitsInTerritory(territoryName, atreidesPeek.opponentIdx);
+			int units = view.map.getCombatUnitsInTerritory(territoryName, atreidesPeek.opponentIdx);
 			lockedElement.dialValue = getBattleWheelChoice(ctx, atreidesPeek.opponentIdx, units,
 				territoryName, opponentEliteStrength);
 			lockedElement.hasDial = true;
@@ -615,9 +869,9 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		int attackerLeaderPower = attackerChoice.leaderPower;
 
 		// Attacker survives with remaining strength after dialing.
-		int attackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
+		int attackerUnits = view.map.getCombatUnitsInTerritory(territoryName, attackerIdx);
 		int wheelValue = getBattleWheelChoice(ctx, attackerIdx, attackerUnits, territoryName, attackerEliteStrength);
-		auto [normalUnits, eliteUnits] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [normalUnits, eliteUnits] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
 		int unitStrength = calculateUnitStrength(wheelValue, normalUnits, eliteUnits, attackerEliteStrength);
 
 		if (ctx.logger) {
@@ -627,7 +881,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 				+ " (leader) = " + std::to_string(unitStrength + attackerLeaderPower));
 		}
 
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
 		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
 		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
 		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
@@ -636,7 +890,7 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
 		
 		// Get defender's breakdown for full removal
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
 		
 		if (ctx.logger) {
@@ -676,11 +930,22 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 
 		const bool thisIsLockedOpponent = (lockedElement.active && playerIdx == atreidesPeek.opponentIdx);
+		const bool thisIsVoiceTarget = (beneVoice.active && playerIdx == beneVoice.targetIdx);
 
 		if (thisIsLockedOpponent && lockedElement.hasLeader) {
 			outChoice = lockedElement.leaderChoice;
 		} else {
-			outChoice = selectBattleLeaderChoice(ctx, player);
+			bool forceCheapHero = false;
+			bool forbidCheapHero = false;
+			if (thisIsVoiceTarget && beneVoice.target == BeneVoiceTarget::CHEAP_HERO) {
+				forceCheapHero = beneVoice.demandPlay;
+				forbidCheapHero = !beneVoice.demandPlay;
+			}
+			outChoice = selectBattleLeaderChoice(ctx, player, forceCheapHero, forbidCheapHero);
+			if (!outChoice.valid && forceCheapHero) {
+				// Cannot comply with "play cheap hero" -> may do as they wish.
+				outChoice = selectBattleLeaderChoice(ctx, player);
+			}
 			if (!outChoice.valid) return false;
 			if (!outChoice.usedCheapHero && outChoice.aliveLeaderIndex >= 0) {
 				player->markLeaderBattled(static_cast<size_t>(outChoice.aliveLeaderIndex));
@@ -690,26 +955,98 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 
 		if (thisIsLockedOpponent && lockedElement.hasWeapon) {
 			outWeapon = lockedElement.weapon;
+			if (thisIsVoiceTarget && beneVoice.demandPlay && beneVoice.target == BeneVoiceTarget::WORTHLESS &&
+				isWorthlessCard(outWeapon)) {
+				beneVoice.worthlessSatisfied = true;
+			}
 		} else {
 			std::vector<std::string> offenseChoices = collectBattleCards(player, true);
 			if (thisIsLockedOpponent && lockedElement.hasDefense) {
 				removeOneCardInstance(offenseChoices, lockedElement.defense);
 			}
-			outWeapon = selectBattleCard(ctx, player, offenseChoices, "offense");
+			bool offenseAllowNone = true;
+			if (thisIsVoiceTarget) {
+				std::vector<std::string> filtered;
+				bool affectsOffense = (beneVoice.target == BeneVoiceTarget::WEAPON_POISON ||
+					beneVoice.target == BeneVoiceTarget::WEAPON_PROJECTILE ||
+					beneVoice.target == BeneVoiceTarget::WEAPON_LASGUN ||
+					beneVoice.target == BeneVoiceTarget::WORTHLESS);
+				if (affectsOffense) {
+					for (const std::string& c : offenseChoices) {
+						bool match = cardMatchesVoiceTarget(c, beneVoice.target);
+						if ((beneVoice.demandPlay && match) || (!beneVoice.demandPlay && !match)) {
+							filtered.push_back(c);
+						}
+					}
+					if (!filtered.empty() || !beneVoice.demandPlay) {
+						offenseChoices = filtered;
+						if (beneVoice.demandPlay) {
+							offenseAllowNone = false;
+						}
+					}
+				}
+			}
+			outWeapon = selectBattleCard(ctx, player, offenseChoices, "offense", offenseAllowNone);
+			if (thisIsVoiceTarget && beneVoice.demandPlay && beneVoice.target == BeneVoiceTarget::WORTHLESS &&
+				isWorthlessCard(outWeapon)) {
+				beneVoice.worthlessSatisfied = true;
+			}
 		}
 
 		if (thisIsLockedOpponent && lockedElement.hasDefense) {
 			outDefense = lockedElement.defense;
+			if (thisIsVoiceTarget && beneVoice.demandPlay && beneVoice.target == BeneVoiceTarget::WORTHLESS &&
+				isWorthlessCard(outDefense)) {
+				beneVoice.worthlessSatisfied = true;
+			}
 		} else {
 			std::vector<std::string> defenseChoices = collectBattleCards(player, false);
 			removeOneCardInstance(defenseChoices, outWeapon);
-			outDefense = selectBattleCard(ctx, player, defenseChoices, "defense");
+			bool defenseAllowNone = true;
+			if (thisIsVoiceTarget) {
+				std::vector<std::string> filtered;
+				bool affectsDefense = (beneVoice.target == BeneVoiceTarget::DEFENSE_SHIELD ||
+					beneVoice.target == BeneVoiceTarget::DEFENSE_SNOOPER ||
+					beneVoice.target == BeneVoiceTarget::WORTHLESS);
+				if (affectsDefense) {
+					for (const std::string& c : defenseChoices) {
+						bool match = cardMatchesVoiceTarget(c, beneVoice.target);
+						if ((beneVoice.demandPlay && match) || (!beneVoice.demandPlay && !match)) {
+							filtered.push_back(c);
+						}
+					}
+					if (!filtered.empty() || !beneVoice.demandPlay) {
+						defenseChoices = filtered;
+						if (beneVoice.demandPlay) {
+							defenseAllowNone = false;
+						}
+					}
+				}
+
+				// Worthless command may be satisfied by either slot; if not yet satisfied and possible here, force it.
+				if (beneVoice.target == BeneVoiceTarget::WORTHLESS && beneVoice.demandPlay &&
+					!beneVoice.worthlessSatisfied) {
+					std::vector<std::string> worthlessOnly;
+					for (const std::string& c : defenseChoices) {
+						if (isWorthlessCard(c)) worthlessOnly.push_back(c);
+					}
+					if (!worthlessOnly.empty()) {
+						defenseChoices = worthlessOnly;
+						defenseAllowNone = false;
+					}
+				}
+			}
+			outDefense = selectBattleCard(ctx, player, defenseChoices, "defense", defenseAllowNone);
+			if (thisIsVoiceTarget && beneVoice.demandPlay && beneVoice.target == BeneVoiceTarget::WORTHLESS &&
+				isWorthlessCard(outDefense)) {
+				beneVoice.worthlessSatisfied = true;
+			}
 		}
 
 		if (thisIsLockedOpponent && lockedElement.hasDial) {
 			outDialValue = lockedElement.dialValue;
 		} else {
-			int units = view.map.getUnitsInTerritory(territoryName, playerIdx);
+			int units = view.map.getCombatUnitsInTerritory(territoryName, playerIdx);
 			outDialValue = getBattleWheelChoice(ctx, playerIdx, units, territoryName, eliteStrength);
 		}
 
@@ -793,10 +1130,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	}
 
 	// Calculate actual unit strength (elite units count as 2x unless faction matchup modifies it)
-	int attackerUnits = view.map.getUnitsInTerritory(territoryName, attackerIdx);
-	int defenderUnits = view.map.getUnitsInTerritory(territoryName, defenderIdx);
-	auto [normalUnits, eliteUnits] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-	auto [defNormalUnits, defEliteUnits] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+	int attackerUnits = view.map.getCombatUnitsInTerritory(territoryName, attackerIdx);
+	int defenderUnits = view.map.getCombatUnitsInTerritory(territoryName, defenderIdx);
+	auto [normalUnits, eliteUnits] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+	auto [defNormalUnits, defEliteUnits] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 	int unitStrength = calculateUnitStrength(wheelValue, normalUnits, eliteUnits, attackerEliteStrength);
 	int defUnitStrength = calculateUnitStrength(defWheelValue, defNormalUnits, defEliteUnits, defenderEliteStrength);
 
@@ -880,6 +1217,19 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 	};
 
+	auto awardWinnerSpiceForDeadLeaders = [&](Player* winner) {
+		int spiceAward = 0;
+		if (attackerLeaderKilled) spiceAward += attackerChoice.leaderPower;
+		if (defenderLeaderKilled) spiceAward += defenderChoice.leaderPower;
+		if (spiceAward <= 0) return;
+
+		winner->addSpice(spiceAward);
+		if (ctx.logger) {
+			ctx.logger->logDebug("Battle reward: " + winner->getFactionName() +
+				" gains " + std::to_string(spiceAward) + " spice for dead leader(s) in this battle.");
+		}
+	};
+
 	// Determine winner (attacker wins ties)
 	if (attackerValue > defenderValue) {
 		if (ctx.logger) {
@@ -887,8 +1237,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 		
 		// Winner (attacker) keeps totalStrength - dialedStrength
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		
 		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
 		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
@@ -907,8 +1257,11 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logEvent(e);
 		}
 		
-		// Trigger faction ability hooks for battle win
-		attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		// Trigger advanced faction battle-win hooks (e.g., Harkonnen capture)
+		if (ctx.featureSettings.advancedFactionAbilities) {
+			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		}
+		awardWinnerSpiceForDeadLeaders(attacker);
 		resolveBattleCardAftermath(attackerIdx, defenderIdx);
 		
 	} else if (attackerValue < defenderValue) {
@@ -917,8 +1270,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 		
 		// Calculate unit breakdowns for removal
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		
 		int totalDefenderStrength = calculateUnitStrength(defenderUnits, defNormalUnits, defEliteUnits, defenderEliteStrength);
 		int defenderRemainingStrength = std::max(0, totalDefenderStrength - defUnitStrength);
@@ -937,8 +1290,11 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logEvent(e);
 		}
 		
-		// Trigger faction ability hooks for battle win
-		defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
+		// Trigger advanced faction battle-win hooks (e.g., Harkonnen capture)
+		if (ctx.featureSettings.advancedFactionAbilities) {
+			defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
+		}
+		awardWinnerSpiceForDeadLeaders(defender);
 		resolveBattleCardAftermath(defenderIdx, attackerIdx);
 		
 	} else {
@@ -947,8 +1303,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 		
 		// Winner (attacker in tie) keeps totalStrength - dialedStrength
-		auto [aN, aE] = view.map.getUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getUnitBreakdown(territoryName, defenderIdx);
+		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
 		
 		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
 		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
@@ -967,8 +1323,11 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			ctx.logger->logEvent(e);
 		}
 		
-		// Trigger faction ability hooks for battle win (attacker wins tie)
-		attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		// Trigger advanced faction battle-win hooks (attacker wins tie)
+		if (ctx.featureSettings.advancedFactionAbilities) {
+			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
+		}
+		awardWinnerSpiceForDeadLeaders(attacker);
 		resolveBattleCardAftermath(attackerIdx, defenderIdx);
 	}
 }
@@ -1013,7 +1372,7 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 	int maxStrength = 0;
 	int normalAvailable = 0, eliteAvailable = 0;
 	if (!territoryName.empty()) {
-		auto [n, e] = view.map.getUnitBreakdown(territoryName, playerIndex);
+		auto [n, e] = view.map.getCombatUnitBreakdown(territoryName, playerIndex);
 		normalAvailable = n;
 		eliteAvailable = e;
 		maxStrength = calculateUnitStrength(maxUnits, n, e, eliteStrength);

@@ -4,6 +4,7 @@
 #include <player.hpp>
 #include <set>
 #include <random>
+#include <algorithm>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include <iostream>
@@ -80,12 +81,43 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 
 		}
 
-		// Find next eligible player to start bidding
-		int startingPlayerIdx = (startingBidderIndex) % eligiblePlayers.size();
-		int startingPlayer = eligiblePlayers[startingPlayerIdx];
+		// Build bidders for this card (skip players who became full during earlier auctions).
+		std::vector<int> eligibleThisCard;
+		for (int pIdx : eligiblePlayers) {
+			FactionAbility* ability = ctx.getAbility(static_cast<size_t>(pIdx));
+			int maxCards = (ability) ? ability->getMaxTreacheryCards() : 4;
+			if (static_cast<int>(view.players[pIdx]->getTreacheryCards().size()) < maxCards) {
+				eligibleThisCard.push_back(pIdx);
+			}
+		}
+
+		if (eligibleThisCard.empty()) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("No eligible bidders remain. Ending bidding phase.");
+			}
+			return;
+		}
+
+		// Find next starting player by rotating seats, skipping those now full.
+		int startingPlayer = -1;
+		for (size_t offset = 0; offset < eligiblePlayers.size(); ++offset) {
+			int probeIdx = static_cast<int>((startingBidderIndex + offset) % eligiblePlayers.size());
+			int probePlayer = eligiblePlayers[probeIdx];
+			if (std::find(eligibleThisCard.begin(), eligibleThisCard.end(), probePlayer) != eligibleThisCard.end()) {
+				startingPlayer = probePlayer;
+				break;
+			}
+		}
+
+		if (startingPlayer < 0) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("No valid starting bidder found. Ending bidding phase.");
+			}
+			return;
+		}
 
 		// Run bidding for this card
-		int winner = biddingRoundForCard(ctx, startingPlayer, eligiblePlayers);
+		int winner = biddingRoundForCard(ctx, startingPlayer, eligibleThisCard);
 
 		if (winner == -1) {
 			// Everyone passed on this card - return all remaining cards to deck and END bidding
@@ -113,13 +145,8 @@ void BiddingPhase::execute(PhaseContext& ctx) {
 			ctx.logger->logEvent(e);
 		}
 
-		// Rotate starting bidder for next card
-		for (size_t i = 0; i < eligiblePlayers.size(); ++i) {
-			if (eligiblePlayers[i] == winner) {
-				startingBidderIndex = (i + 1) % eligiblePlayers.size();
-				break;
-			}
-		}
+		// Rotate starting seat for next card regardless of who won.
+		startingBidderIndex = (startingBidderIndex + 1) % static_cast<int>(eligiblePlayers.size());
 	}
 
 	if (ctx.logger) {

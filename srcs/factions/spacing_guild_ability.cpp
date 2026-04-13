@@ -48,7 +48,10 @@ int SpacingGuildAbility::getShipmentCost(const territory* terr, int unitCount) c
 	return (baseCost + 1) / 2;
 }
 
-void SpacingGuildAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount) {
+void SpacingGuildAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingFactionIndex, int amount,
+	const std::string& destinationTerritory, bool fromOffPlanet) {
+	(void)destinationTerritory;
+	(void)fromOffPlanet;
 	if (amount <= 0) return;
 
 	int guildIndex = -1;

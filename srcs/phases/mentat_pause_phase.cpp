@@ -2,6 +2,7 @@
 #include "phases/phase_context.hpp"
 #include "map.hpp"
 #include "player.hpp"
+#include "factions/bene_gesserit_ability.hpp"
 #include "logger/event_logger.hpp"
 #include "events/event.hpp"
 
@@ -27,6 +28,40 @@ bool MentatPausePhase::checkVictory(PhaseContext& ctx) {
 		int citiesControlled = countCitiesControlled(ctx, i);
 
 		if (citiesControlled >= 3) {
+			int beneIndex = -1;
+			BeneGesseritAbility* beneAbility = nullptr;
+			for (size_t j = 0; j < view.players.size(); ++j) {
+				FactionAbility* ability = view.players[j]->getFactionAbility();
+				auto* bg = dynamic_cast<BeneGesseritAbility*>(ability);
+				if (bg) {
+					beneIndex = static_cast<int>(j);
+					beneAbility = bg;
+					break;
+				}
+			}
+
+			if (beneAbility && beneAbility->predictionMatches(view.players[i]->getFactionName(), ctx.turnNumber)) {
+				if (ctx.logger) {
+					ctx.logger->logDebug("");
+					ctx.logger->logDebug("╔════════════════════════════════════════╗");
+					ctx.logger->logDebug("║      BENE GESSERIT PREDICTION HIT!     ║");
+					ctx.logger->logDebug("╚════════════════════════════════════════╝");
+
+					std::string victoryMsg = "Bene Gesserit reveals prediction (" +
+						beneAbility->getPredictedFaction() + " on turn " +
+						std::to_string(beneAbility->getPredictedTurn()) +
+						") and wins alone!";
+					ctx.logger->logDebug(victoryMsg);
+
+					Event e(EventType::GAME_ENDED,
+						victoryMsg,
+						ctx.turnNumber, "MENTAT_PAUSE");
+					e.playerFaction = (beneIndex >= 0) ? view.players[beneIndex]->getFactionName() : "Bene Gesserit";
+					ctx.logger->logEvent(e);
+				}
+				return true;
+			}
+
 			if (ctx.logger) {
 				ctx.logger->logDebug("");
 				ctx.logger->logDebug("╔════════════════════════════════════════╗");

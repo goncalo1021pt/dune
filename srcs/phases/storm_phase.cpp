@@ -63,7 +63,7 @@ void StormPhase::applyStormDamage(PhaseContext& ctx, int prevSector, int move) {
 
 			FactionAbility* ability = ctx.getAbility(stack.factionOwner);
 
-			if (ability && ability->hasReducedStormLosses()) {
+			if (ctx.featureSettings.advancedFactionAbilities && ability && ability->hasReducedStormLosses()) {
 				// Fremen: kill half (round up), survivors stay in same sector.
 				int killedNormal = (stack.normal_units + 1) / 2;
 				int killedElite  = (stack.elite_units  + 1) / 2;
@@ -134,7 +134,7 @@ void StormPhase::execute(PhaseContext& ctx) {
 	auto view = ctx.getStormView();
 
 	auto logFremenStormPrescience = [&]() {
-		if (!ctx.featureSettings.fremenPeekNextStormCard || !ctx.logger || !view.hasNextStormCard) {
+		if (!ctx.logger || !view.hasNextStormCard) {
 			return;
 		}
 		bool hasFremen = false;

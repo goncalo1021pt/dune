@@ -32,6 +32,9 @@ void SpiceCollectionPhase::addCitySpiceProduction(PhaseContext::SpiceCollectionV
 		if (city != nullptr && !city->unitsPresent.empty()) {
 			// City provides tax to all factions that have units there
 			for (const auto& unitStack : city->unitsPresent) {
+				if (unitStack.advisor) {
+					continue;
+				}
 				int tax = cityTaxAmount[i];
 				view.players[unitStack.factionOwner]->addSpice(tax);
 				
@@ -61,6 +64,9 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 		}
 
 		for (const auto& unitStack : territory.unitsPresent) {
+			if (unitStack.advisor) {
+				continue;
+			}
 			int totalUnits = unitStack.normal_units + unitStack.elite_units;
 			if (totalUnits <= 0) {
 				continue;

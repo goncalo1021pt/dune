@@ -8,6 +8,7 @@
 #include <queue>
 #include <set>
 #include "cards/spice_deck.hpp"
+#include "factions/bene_gesserit_ability.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 
@@ -171,8 +172,60 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	auto view = ctx.getShipAndMoveView();
 	std::vector<bool> didAny(view.players.size(), false);
 
-	// Atreides prescience: at start of Ship+Move, peek upcoming Spice Blow cards.
-	if (ctx.featureSettings.atreidesPeekNextSpiceBlowCards && ctx.logger) {
+	int beneIndex = -1;
+	BeneGesseritAbility* beneAbility = nullptr;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		for (size_t i = 0; i < ctx.players.size(); ++i) {
+			auto* bg = dynamic_cast<BeneGesseritAbility*>(ctx.getAbility(static_cast<int>(i)));
+			if (bg) {
+				beneIndex = static_cast<int>(i);
+				beneAbility = bg;
+				beneAbility->beginTurn(ctx.turnNumber);
+				break;
+			}
+		}
+	}
+
+	if (beneAbility && ctx.logger) {
+		ctx.logger->logDebug("[Bene Gesserit] Pre-shipment advisor battle declaration window");
+	}
+	if (beneAbility) {
+		for (const auto& terr : view.map.getTerritories()) {
+			int advisors = view.map.getAdvisorUnitsInTerritory(terr.name, beneIndex);
+			if (advisors <= 0) continue;
+
+			bool doFlip = false;
+			if (view.interactiveMode) {
+				if (ctx.logger) {
+					ctx.logger->logDebug("[Bene Gesserit] Declare battle from advisors in " + terr.name +
+						" and flip to fighters? (y/n): ");
+				}
+				while (true) {
+					std::string input;
+					std::getline(std::cin >> std::ws, input);
+					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
+						doFlip = true;
+						break;
+					}
+					if (input == "n" || input == "N" || input == "no" || input == "No") {
+						break;
+					}
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid input. Enter y or n: ");
+					}
+				}
+			} else {
+				doFlip = (view.map.countCombatFactionsInTerritory(terr.name) > 0);
+			}
+
+			if (doFlip) {
+				beneAbility->flipAdvisorsToFighters(ctx, terr.name);
+			}
+		}
+	}
+
+	// Atreides prescience is a base faction ability.
+	if (ctx.logger) {
 		for (size_t i = 0; i < ctx.players.size(); ++i) {
 			FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
 			if (!ability || ability->getFactionName() != "Atreides") continue;
@@ -231,18 +284,22 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	};
 
 	int guildIndex = -1;
-	for (int playerIndex : view.turnOrder) {
-		FactionAbility* ability = ctx.getAbility(playerIndex);
-		if (ability && ability->canMoveOutOfTurnOrder()) {
-			guildIndex = playerIndex;
-			break;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		for (int playerIndex : view.turnOrder) {
+			FactionAbility* ability = ctx.getAbility(playerIndex);
+			if (ability && ability->canMoveOutOfTurnOrder()) {
+				guildIndex = playerIndex;
+				break;
+			}
 		}
 	}
 
 	if (guildIndex == -1) {
-		// Detach for all factions: first all shipments, then all movements.
-		runShipmentStep(view.turnOrder);
-		runMovementStep(view.turnOrder);
+		// Standard flow: each faction resolves shipment, then movement.
+		for (int playerIndex : view.turnOrder) {
+			executeShipmentForPlayer(playerIndex);
+			executeMovementForPlayer(playerIndex);
+		}
 		logPasses();
 		return;
 	}
@@ -251,7 +308,6 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	nonGuildOrder.erase(std::remove(nonGuildOrder.begin(), nonGuildOrder.end(), guildIndex), nonGuildOrder.end());
 
 	if (!view.interactiveMode) {
-		// AI mode: Guild acts once between global shipment and movement steps.
 		runShipmentStep(nonGuildOrder);
 		executeShipmentForPlayer(guildIndex);
 		executeMovementForPlayer(guildIndex);
@@ -494,6 +550,10 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	
 	auto view = ctx.getShipAndMoveView();
 	std::vector<std::string> validTargets;
+	bool beneAdvanced = false;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		beneAdvanced = (dynamic_cast<BeneGesseritAbility*>(ctx.getAbility(factionIndex)) != nullptr);
+	}
 	
 	FactionAbility* ability = ctx.getAbility(factionIndex);
 	std::vector<std::string> restricted;
@@ -502,6 +562,7 @@ std::vector<std::string> ShipAndMovePhase::getValidDeploymentTargets(
 	auto isValid = [&](const territory& terr) -> bool {
 		// Cannot ship into a sector that is fully in storm.
 		if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) return false;
+		if (beneAdvanced) return true;
 		return view.map.canAddFactionToTerritory(terr.name, factionIndex);
 	};
 
@@ -525,8 +586,24 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 	auto view = ctx.getShipAndMoveView();
 
 	int totalUnits = normalUnits + eliteUnits;
-	
-	if (!isValidDeployment(ctx, player->getFactionIndex(), territoryName, totalUnits)) {
+	bool asAdvisor = false;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		auto* bg = dynamic_cast<BeneGesseritAbility*>(player->getFactionAbility());
+		if (bg) {
+			bg->beginTurn(ctx.turnNumber);
+			const bool unoccupiedByCombatForces = (view.map.countCombatFactionsInTerritory(territoryName) == 0);
+			asAdvisor = !unoccupiedByCombatForces;
+		}
+	}
+
+	if (asAdvisor) {
+		territory* checkTerr = view.map.getTerritory(territoryName);
+		if (totalUnits <= 0 || checkTerr == nullptr || !GameMap::canEnterTerritory(checkTerr, ctx.stormSector) ||
+			!view.map.canAddAdvisorToTerritory(territoryName, player->getFactionIndex())) {
+			if (ctx.logger) ctx.logger->logDebug("Deployment FAILED: Invalid advisor deployment");
+			return false;
+		}
+	} else if (!isValidDeployment(ctx, player->getFactionIndex(), territoryName, totalUnits)) {
 		if (ctx.logger) ctx.logger->logDebug("Deployment FAILED: Invalid deployment");
 		return false;
 	}
@@ -560,23 +637,59 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 		}
 		return false;
 	}
-	
+
 	player->removeSpice(cost);
-	// Notify factions that a shipment payment was made (Guild hook).
+	player->deployUnits(totalUnits);
+	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(),
+	                              normalUnits, eliteUnits, effectiveSector, asAdvisor);
+
+	// Notify factions that a shipment payment was made (Guild hook + Bene advisors).
 	for (size_t i = 0; i < ctx.players.size(); ++i) {
 		FactionAbility* ability = ctx.getAbility(static_cast<int>(i));
 		if (ability) {
-			ability->onOtherFactionShipped(ctx, player->getFactionIndex(), cost);
+			ability->onOtherFactionShipped(ctx, player->getFactionIndex(), cost, territoryName, true);
 		}
 	}
-	player->deployUnits(totalUnits);
-	view.map.addUnitsToTerritory(territoryName, player->getFactionIndex(),
-	                              normalUnits, eliteUnits, effectiveSector);
+
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		for (size_t i = 0; i < ctx.players.size(); ++i) {
+			auto* bg = dynamic_cast<BeneGesseritAbility*>(ctx.getAbility(static_cast<int>(i)));
+			if (!bg) continue;
+			if (static_cast<int>(i) == player->getFactionIndex()) continue;
+			if (view.map.getCombatUnitsInTerritory(territoryName, static_cast<int>(i)) <= 0) continue;
+			if (ctx.logger) {
+				ctx.logger->logDebug("[Bene Gesserit] Intrusion in " + territoryName +
+					": flip fighters to advisors? (y/n): ");
+			}
+			bool flip = !view.interactiveMode;
+			if (view.interactiveMode) {
+				while (true) {
+					std::string input;
+					std::getline(std::cin >> std::ws, input);
+					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
+						flip = true;
+						break;
+					}
+					if (input == "n" || input == "N" || input == "no" || input == "No") {
+						flip = false;
+						break;
+					}
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid input. Enter y or n: ");
+					}
+				}
+			}
+			if (flip) {
+				bg->flipFightersToAdvisors(ctx, territoryName);
+			}
+		}
+	}
 	
 	if (ctx.logger) {
 		ctx.logger->logDebug("Shipment: " + std::to_string(totalUnits) +
 			" units → " + territoryName +
 			" (sector " + std::to_string(effectiveSector) + ")" +
+			(std::string(" [") + (asAdvisor ? "advisor" : "fighter") + "]") +
 			" for " + std::to_string(cost) + " spice");
 
 		Event e(EventType::UNITS_SHIPPED,
@@ -756,9 +869,12 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 	auto view = ctx.getShipAndMoveView();
 
 	int totalUnits = normalUnits + eliteUnits;
-	
-	// Check units are available in the specific source sector.
 	int unitsInSector = view.map.getUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	int combatUnitsInSector = view.map.getCombatUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	int advisorUnitsInSector = view.map.getAdvisorUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
+	bool beneAdvanced = ctx.featureSettings.advancedFactionAbilities &&
+		(dynamic_cast<BeneGesseritAbility*>(ctx.getAbility(factionIndex)) != nullptr);
+
 	if (unitsInSector < totalUnits) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Movement FAILED: Need " + std::to_string(totalUnits) +
@@ -767,9 +883,16 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 		}
 		return false;
 	}
+	if (!beneAdvanced && combatUnitsInSector < totalUnits) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("Movement FAILED: Only fighters may move for this faction in sector " +
+				std::to_string(fromSector) + " of " + fromTerritory);
+		}
+		return false;
+	}
 
 	int eliteInSector = view.map.getEliteUnitsInTerritorySector(fromTerritory, factionIndex, fromSector);
-	int normalInSector = unitsInSector - eliteInSector;
+	int normalInSector = combatUnitsInSector - eliteInSector;
 	if (normalUnits < 0 || eliteUnits < 0 || normalUnits > normalInSector || eliteUnits > eliteInSector) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Movement FAILED: Invalid unit split from sector " +
@@ -778,7 +901,9 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 				" elite; available " + std::to_string(normalInSector) + " normal, " +
 				std::to_string(eliteInSector) + " elite)");
 		}
-		return false;
+		if (!(beneAdvanced && eliteUnits == 0 && advisorUnitsInSector >= totalUnits)) {
+			return false;
+		}
 	}
 
 	// Validate reachability using the source sector.
@@ -795,11 +920,93 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 		return false;
 	}
 	
+	bool movingAsAdvisor = false;
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		auto* bene = dynamic_cast<BeneGesseritAbility*>(ctx.getAbility(factionIndex));
+		if (bene) {
+			bene->beginTurn(ctx.turnNumber);
+			if (eliteUnits == 0 && advisorUnitsInSector >= totalUnits && combatUnitsInSector < totalUnits) {
+				movingAsAdvisor = true;
+			}
+		}
+	}
+	if (movingAsAdvisor) {
+		eliteUnits = 0;
+		normalUnits = totalUnits;
+	}
+
 	// Remove from source sector, add to destination sector.
-	view.map.removeUnitsFromTerritorySector(fromTerritory, factionIndex,
-	                                         normalUnits, eliteUnits, fromSector);
-	view.map.addUnitsToTerritory(toTerritory, factionIndex,
-	                              normalUnits, eliteUnits, toSector);
+	if (movingAsAdvisor) {
+		view.map.removeUnitsFromTerritorySector(fromTerritory, factionIndex,
+		                                         normalUnits, eliteUnits, fromSector, true);
+	} else {
+		view.map.removeUnitsFromTerritorySector(fromTerritory, factionIndex,
+		                                         normalUnits, eliteUnits, fromSector, false);
+	}
+
+	if (movingAsAdvisor) {
+		bool destinationHasCombat = (view.map.countCombatFactionsInTerritory(toTerritory) > 0);
+		bool keepAdvisor = destinationHasCombat;
+		if (destinationHasCombat && view.interactiveMode) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("[Bene Gesserit] Keep moved units as advisors in " + toTerritory + "? (y/n): ");
+			}
+			while (true) {
+				std::string input;
+				std::getline(std::cin >> std::ws, input);
+				if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
+					keepAdvisor = true;
+					break;
+				}
+				if (input == "n" || input == "N" || input == "no" || input == "No") {
+					keepAdvisor = false;
+					break;
+				}
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid input. Enter y or n: ");
+				}
+			}
+		}
+		view.map.addUnitsToTerritory(toTerritory, factionIndex,
+		                              normalUnits, eliteUnits, toSector, keepAdvisor);
+	} else {
+		view.map.addUnitsToTerritory(toTerritory, factionIndex,
+		                              normalUnits, eliteUnits, toSector, false);
+	}
+
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		for (size_t i = 0; i < ctx.players.size(); ++i) {
+			auto* bg = dynamic_cast<BeneGesseritAbility*>(ctx.getAbility(static_cast<int>(i)));
+			if (!bg) continue;
+			if (static_cast<int>(i) == factionIndex) continue;
+			if (view.map.getCombatUnitsInTerritory(toTerritory, static_cast<int>(i)) <= 0) continue;
+			if (ctx.logger) {
+				ctx.logger->logDebug("[Bene Gesserit] Intrusion in " + toTerritory +
+					": flip fighters to advisors? (y/n): ");
+			}
+			bool flip = !view.interactiveMode;
+			if (view.interactiveMode) {
+				while (true) {
+					std::string input;
+					std::getline(std::cin >> std::ws, input);
+					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
+						flip = true;
+						break;
+					}
+					if (input == "n" || input == "N" || input == "no" || input == "No") {
+						flip = false;
+						break;
+					}
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid input. Enter y or n: ");
+					}
+				}
+			}
+			if (flip) {
+				bg->flipFightersToAdvisors(ctx, toTerritory);
+			}
+		}
+	}
 	
 	if (ctx.logger) {
 		ctx.logger->logDebug("Moved " + std::to_string(totalUnits) +

@@ -39,21 +39,31 @@ namespace GameConstants {
 }
 
 struct GameFeatureSettings {
+	// Advanced modules (all disabled in default/basic game).
+	bool advancedFactionAbilities = false;
+	bool increasedSpiceFlow = false;
+	bool advancedCombat = false;
+
+	// Concrete toggle currently implemented under Increased Spice Flow.
 	bool advancedDoubleSpiceBlow = false;
-	bool atreidesPeekNextSpiceBlowCards = true;
-	bool fremenPeekNextStormCard = true;
 };
 
 inline GameFeatureSettings defaultFeatureSettings() {
-	return GameFeatureSettings{};
+	GameFeatureSettings s;
+	s.advancedFactionAbilities = false;
+	s.increasedSpiceFlow = false;
+	s.advancedCombat = false;
+	s.advancedDoubleSpiceBlow = false;
+	return s;
 }
 
 // Testing profile: enable most currently implemented advanced features.
 inline GameFeatureSettings testingFeatureSettings() {
 	GameFeatureSettings s;
+	s.advancedFactionAbilities = true;
+	s.increasedSpiceFlow = true;
+	s.advancedCombat = true;
 	s.advancedDoubleSpiceBlow = true;
-	s.atreidesPeekNextSpiceBlowCards = true;
-	s.fremenPeekNextStormCard = true;
 	return s;
 }
 

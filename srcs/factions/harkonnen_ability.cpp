@@ -115,11 +115,38 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 		return;
 	}
 
-	// Capture the highest-power opponent leader.
 	int captureIdx = 0;
-	for (int i = 1; i < static_cast<int>(opponentLeaders.size()); ++i) {
-		if (opponentLeaders[i].power > opponentLeaders[captureIdx].power) {
-			captureIdx = i;
+	if (ctx.interactiveMode) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Harkonnen] Choose leader to capture from " + opponent->getFactionName() + ":");
+			for (int i = 0; i < static_cast<int>(opponentLeaders.size()); ++i) {
+				ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + opponentLeaders[i].name +
+					" (power:" + std::to_string(opponentLeaders[i].power) + ")");
+			}
+			ctx.logger->logDebug("Choose (1-" + std::to_string(opponentLeaders.size()) + "): ");
+		}
+
+		while (true) {
+			std::string input;
+			std::getline(std::cin >> std::ws, input);
+			try {
+				int pick = std::stoi(input);
+				if (pick >= 1 && pick <= static_cast<int>(opponentLeaders.size())) {
+					captureIdx = pick - 1;
+					break;
+				}
+			} catch (...) {
+			}
+			if (ctx.logger) {
+				ctx.logger->logDebug("Invalid choice. Try again: ");
+			}
+		}
+	} else {
+		// AI fallback: capture highest-power leader.
+		for (int i = 1; i < static_cast<int>(opponentLeaders.size()); ++i) {
+			if (opponentLeaders[i].power > opponentLeaders[captureIdx].power) {
+				captureIdx = i;
+			}
 		}
 	}
 
