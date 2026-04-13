@@ -99,15 +99,8 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 		std::vector<std::string> validDests;
 		const auto& allTerritories = ctx.map.getTerritories();
 		for (const auto& terr : allTerritories) {
-			// Can't land in storm
-			bool inStorm = false;
-			for (int sectorNum : terr.sectors) {
-				if (sectorNum == ctx.stormSector) {
-					inStorm = true;
-					break;
-				}
-			}
-			if (inStorm) continue;
+			if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) continue;
+			if (!ctx.map.canAddFactionToTerritory(terr.name, fremenIndex)) continue;
 			
 			validDests.push_back(terr.name);
 		}
@@ -160,14 +153,8 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 		std::vector<std::string> validDests;
 		const auto& allTerritories = ctx.map.getTerritories();
 		for (const auto& terr : allTerritories) {
-			bool inStorm = false;
-			for (int sectorNum : terr.sectors) {
-				if (sectorNum == ctx.stormSector) {
-					inStorm = true;
-					break;
-				}
-			}
-			if (inStorm) continue;
+			if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) continue;
+			if (!ctx.map.canAddFactionToTerritory(terr.name, fremenIndex)) continue;
 			
 			validDests.push_back(terr.name);
 		}
@@ -179,8 +166,16 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 
 	// Place units at destination
 	if (!destinationTerritory.empty()) {
-		// Deploy to chosen territory (sector -1 auto-selects first safe sector)
-		ctx.map.addUnitsToTerritory(destinationTerritory, fremenIndex, fremenUnitsHere, 0, -1);
+		const territory* destination = ctx.map.getTerritory(destinationTerritory);
+		int safeSector = GameMap::firstSafeSector(destination, ctx.stormSector);
+		if (safeSector < 0 || !ctx.map.canAddFactionToTerritory(destinationTerritory, fremenIndex)) {
+			if (ctx.logger) {
+				ctx.logger->logDebug("[WORM RIDING] Destination became invalid. Worm ride canceled.");
+			}
+			return false;
+		}
+
+		ctx.map.addUnitsToTerritory(destinationTerritory, fremenIndex, fremenUnitsHere, 0, safeSector);
 		if (ctx.logger) {
 			ctx.logger->logDebug("Fremen units deployed to " + destinationTerritory + " via worm");
 		}

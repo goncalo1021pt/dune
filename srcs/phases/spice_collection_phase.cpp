@@ -58,8 +58,8 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 	}
 	
 	for (const auto& territory : view.map.getTerritories()) {
-		int totalSpice = view.map.getSpiceInTerritory(territory.name);
-		if (totalSpice <= 0 || territory.unitsPresent.empty()) {
+		int territorySpiceRemaining = view.map.getSpiceInTerritory(territory.name);
+		if (territorySpiceRemaining <= 0 || territory.unitsPresent.empty()) {
 			continue;
 		}
 
@@ -71,24 +71,29 @@ void SpiceCollectionPhase::collectSpiceFromTerritories(PhaseContext::SpiceCollec
 			if (totalUnits <= 0) {
 				continue;
 			}
+			if (territorySpiceRemaining <= 0) {
+				break;
+			}
 
-			// Each unit collects 2 spice from the current sector
-			int spiceInSector = view.map.getSpiceInSector(territory.name, unitStack.sector);
-			int spiceCollected = std::min(totalUnits * 2, spiceInSector);
+			// Each unit collects 2 spice from the territory regardless of sector.
+			int requestedSpice = totalUnits * 2;
+			int availableBeforeCollection = territorySpiceRemaining;
+			int spiceCollected = view.map.removeSpiceFromTerritory(territory.name,
+				std::min(requestedSpice, availableBeforeCollection));
+			territorySpiceRemaining -= spiceCollected;
 			
 			if (spiceCollected > 0) {
 				// Add to player
 				view.players[unitStack.factionOwner]->addSpice(spiceCollected);
-				
-				// Remove from territory's sector
-				view.map.removeSpiceFromSector(territory.name, spiceCollected, unitStack.sector);
 
 				if (ctx.logger) {
 					std::string unitDesc = "(" + std::to_string(unitStack.normal_units) + " normal + " 
 						+ std::to_string(unitStack.elite_units) + " elite)";
-					std::string fullMessage = unitDesc + " at Sector " + std::to_string(unitStack.sector) 
-						+ " collects " + std::to_string(spiceCollected) + " spice"
-						+ (spiceCollected < totalUnits * 2 ? " [only " + std::to_string(spiceInSector) + " available]" : "");
+					std::string fullMessage = unitDesc + " collects " + std::to_string(spiceCollected)
+						+ " spice from " + territory.name
+						+ (spiceCollected < requestedSpice
+							? " [only " + std::to_string(availableBeforeCollection) + " available]"
+							: "");
 					Event e(EventType::SPICE_COLLECTED,
 						fullMessage,
 						ctx.turnNumber, "SPICE_COLLECTION");

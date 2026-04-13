@@ -475,6 +475,29 @@ int GameMap::removeSpiceFromSector(const std::string& territoryName, int amount,
 	return 0;
 }
 
+int GameMap::removeSpiceFromTerritory(const std::string& territoryName, int amount) {
+	territory* terr = getTerritory(territoryName);
+	if (terr == nullptr || amount <= 0) return 0;
+
+	int remaining = amount;
+	int removedTotal = 0;
+	for (auto& stack : terr->spicePresent) {
+		if (remaining <= 0) {
+			break;
+		}
+		if (stack.amount <= 0) {
+			continue;
+		}
+
+		int removed = std::min(remaining, stack.amount);
+		stack.amount -= removed;
+		remaining -= removed;
+		removedTotal += removed;
+	}
+
+	return removedTotal;
+}
+
 void GameMap::removeAllSpiceFromTerritory(const std::string& territoryName) {
 	territory* terr = getTerritory(territoryName);
 	if (terr == nullptr) return;
