@@ -386,6 +386,43 @@ bool canComplyWithBeneVoice(const Player* targetPlayer, const BeneVoiceState& vo
 	return anyMatchingCard(offense, voice.target);
 }
 
+bool voiceAffectsOffense(BeneVoiceTarget target) {
+	return target == BeneVoiceTarget::WEAPON_POISON ||
+		target == BeneVoiceTarget::WEAPON_PROJECTILE ||
+		target == BeneVoiceTarget::WEAPON_LASGUN ||
+		target == BeneVoiceTarget::WORTHLESS;
+}
+
+bool voiceAffectsDefense(BeneVoiceTarget target) {
+	return target == BeneVoiceTarget::DEFENSE_SHIELD ||
+		target == BeneVoiceTarget::DEFENSE_SNOOPER ||
+		target == BeneVoiceTarget::WORTHLESS;
+}
+
+std::vector<std::string> applyVoiceConstraintToSlot(const std::vector<std::string>& cards,
+	const BeneVoiceState& voice, bool offenseSlot, bool& constraintApplied) {
+	constraintApplied = false;
+	const bool affectsSlot = offenseSlot ? voiceAffectsOffense(voice.target) : voiceAffectsDefense(voice.target);
+	if (!affectsSlot) {
+		return cards;
+	}
+
+	std::vector<std::string> filtered;
+	for (const std::string& c : cards) {
+		bool match = cardMatchesVoiceTarget(c, voice.target);
+		if ((voice.demandPlay && match) || (!voice.demandPlay && !match)) {
+			filtered.push_back(c);
+		}
+	}
+
+	if (!filtered.empty() || !voice.demandPlay) {
+		constraintApplied = true;
+		return filtered;
+	}
+
+	return cards;
+}
+
 BeneVoiceState prepareBeneVoiceForBattle(PhaseContext& ctx, int attackerIdx, int defenderIdx,
 	Player* attacker, Player* defender) {
 	BeneVoiceState voice;
@@ -604,21 +641,8 @@ bool lockOpponentElementForAtreides(PhaseContext& ctx, const AtreidesPeekState& 
 		case BattleElementToPeek::WEAPON: {
 			std::vector<std::string> offenseChoices = collectBattleCards(opponent, true);
 			if (voice.active && peek.opponentIdx == voice.targetIdx) {
-				std::vector<std::string> filtered;
-				const bool affectsOffense =
-					(voice.target == BeneVoiceTarget::WEAPON_POISON ||
-					 voice.target == BeneVoiceTarget::WEAPON_PROJECTILE ||
-					 voice.target == BeneVoiceTarget::WEAPON_LASGUN ||
-					 voice.target == BeneVoiceTarget::WORTHLESS);
-				for (const std::string& c : offenseChoices) {
-					bool match = cardMatchesVoiceTarget(c, voice.target);
-					if ((voice.demandPlay && match) || (!voice.demandPlay && !match)) {
-						filtered.push_back(c);
-					}
-				}
-				if (affectsOffense && (!filtered.empty() || !voice.demandPlay)) {
-					offenseChoices = filtered;
-				}
+				bool constraintApplied = false;
+				offenseChoices = applyVoiceConstraintToSlot(offenseChoices, voice, true, constraintApplied);
 			}
 			locked.weapon = selectBattleCard(ctx, opponent, offenseChoices, "offense (locked)");
 			locked.hasWeapon = true;
@@ -635,20 +659,8 @@ bool lockOpponentElementForAtreides(PhaseContext& ctx, const AtreidesPeekState& 
 		case BattleElementToPeek::DEFENSE: {
 			std::vector<std::string> defenseChoices = collectBattleCards(opponent, false);
 			if (voice.active && peek.opponentIdx == voice.targetIdx) {
-				std::vector<std::string> filtered;
-				const bool affectsDefense =
-					(voice.target == BeneVoiceTarget::DEFENSE_SHIELD ||
-					 voice.target == BeneVoiceTarget::DEFENSE_SNOOPER ||
-					 voice.target == BeneVoiceTarget::WORTHLESS);
-				for (const std::string& c : defenseChoices) {
-					bool match = cardMatchesVoiceTarget(c, voice.target);
-					if ((voice.demandPlay && match) || (!voice.demandPlay && !match)) {
-						filtered.push_back(c);
-					}
-				}
-				if (affectsDefense && (!filtered.empty() || !voice.demandPlay)) {
-					defenseChoices = filtered;
-				}
+				bool constraintApplied = false;
+				defenseChoices = applyVoiceConstraintToSlot(defenseChoices, voice, false, constraintApplied);
 			}
 			locked.defense = selectBattleCard(ctx, opponent, defenseChoices, "defense (locked)");
 			locked.hasDefense = true;
@@ -966,24 +978,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			}
 			bool offenseAllowNone = true;
 			if (thisIsVoiceTarget) {
-				std::vector<std::string> filtered;
-				bool affectsOffense = (beneVoice.target == BeneVoiceTarget::WEAPON_POISON ||
-					beneVoice.target == BeneVoiceTarget::WEAPON_PROJECTILE ||
-					beneVoice.target == BeneVoiceTarget::WEAPON_LASGUN ||
-					beneVoice.target == BeneVoiceTarget::WORTHLESS);
-				if (affectsOffense) {
-					for (const std::string& c : offenseChoices) {
-						bool match = cardMatchesVoiceTarget(c, beneVoice.target);
-						if ((beneVoice.demandPlay && match) || (!beneVoice.demandPlay && !match)) {
-							filtered.push_back(c);
-						}
-					}
-					if (!filtered.empty() || !beneVoice.demandPlay) {
-						offenseChoices = filtered;
-						if (beneVoice.demandPlay) {
-							offenseAllowNone = false;
-						}
-					}
+				bool constraintApplied = false;
+				offenseChoices = applyVoiceConstraintToSlot(offenseChoices, beneVoice, true, constraintApplied);
+				if (constraintApplied && beneVoice.demandPlay) {
+					offenseAllowNone = false;
 				}
 			}
 			outWeapon = selectBattleCard(ctx, player, offenseChoices, "offense", offenseAllowNone);
@@ -1004,23 +1002,10 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			removeOneCardInstance(defenseChoices, outWeapon);
 			bool defenseAllowNone = true;
 			if (thisIsVoiceTarget) {
-				std::vector<std::string> filtered;
-				bool affectsDefense = (beneVoice.target == BeneVoiceTarget::DEFENSE_SHIELD ||
-					beneVoice.target == BeneVoiceTarget::DEFENSE_SNOOPER ||
-					beneVoice.target == BeneVoiceTarget::WORTHLESS);
-				if (affectsDefense) {
-					for (const std::string& c : defenseChoices) {
-						bool match = cardMatchesVoiceTarget(c, beneVoice.target);
-						if ((beneVoice.demandPlay && match) || (!beneVoice.demandPlay && !match)) {
-							filtered.push_back(c);
-						}
-					}
-					if (!filtered.empty() || !beneVoice.demandPlay) {
-						defenseChoices = filtered;
-						if (beneVoice.demandPlay) {
-							defenseAllowNone = false;
-						}
-					}
+				bool constraintApplied = false;
+				defenseChoices = applyVoiceConstraintToSlot(defenseChoices, beneVoice, false, constraintApplied);
+				if (constraintApplied && beneVoice.demandPlay) {
+					defenseAllowNone = false;
 				}
 
 				// Worthless command may be satisfied by either slot; if not yet satisfied and possible here, force it.
@@ -1132,8 +1117,12 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	// Calculate actual unit strength (elite units count as 2x unless faction matchup modifies it)
 	int attackerUnits = view.map.getCombatUnitsInTerritory(territoryName, attackerIdx);
 	int defenderUnits = view.map.getCombatUnitsInTerritory(territoryName, defenderIdx);
-	auto [normalUnits, eliteUnits] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
-	auto [defNormalUnits, defEliteUnits] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
+	auto attackerBreakdown = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
+	auto defenderBreakdown = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
+	int normalUnits = attackerBreakdown.first;
+	int eliteUnits = attackerBreakdown.second;
+	int defNormalUnits = defenderBreakdown.first;
+	int defEliteUnits = defenderBreakdown.second;
 	int unitStrength = calculateUnitStrength(wheelValue, normalUnits, eliteUnits, attackerEliteStrength);
 	int defUnitStrength = calculateUnitStrength(defWheelValue, defNormalUnits, defEliteUnits, defenderEliteStrength);
 
@@ -1230,105 +1219,94 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 		}
 	};
 
+	int winnerIdx = attackerIdx;
+	int loserIdx = defenderIdx;
+	bool winnerIsAttacker = true;
+	bool isTie = false;
+
 	// Determine winner (attacker wins ties)
 	if (attackerValue > defenderValue) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: " + attacker->getFactionName() + " wins!");
 		}
-		
-		// Winner (attacker) keeps totalStrength - dialedStrength
-		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
-		
-		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
-		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
-		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
-		
-		// Attacker loses casualties, defender loses all units
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
-		
-		if (ctx.logger) {
-			Event e(EventType::BATTLE_RESOLVED,
-				attacker->getFactionName() + " defeats " + defender->getFactionName() + " in " + territoryName,
-				ctx.turnNumber, "BATTLE");
-			e.playerFaction = attacker->getFactionName();
-			e.territory = territoryName;
-			ctx.logger->logEvent(e);
-		}
-		
-		// Trigger advanced faction battle-win hooks (e.g., Harkonnen capture)
-		if (ctx.featureSettings.advancedFactionAbilities) {
-			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
-		}
-		awardWinnerSpiceForDeadLeaders(attacker);
-		resolveBattleCardAftermath(attackerIdx, defenderIdx);
-		
 	} else if (attackerValue < defenderValue) {
+		winnerIdx = defenderIdx;
+		loserIdx = attackerIdx;
+		winnerIsAttacker = false;
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: " + defender->getFactionName() + " wins!");
 		}
-		
-		// Calculate unit breakdowns for removal
-		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
-		
-		int totalDefenderStrength = calculateUnitStrength(defenderUnits, defNormalUnits, defEliteUnits, defenderEliteStrength);
-		int defenderRemainingStrength = std::max(0, totalDefenderStrength - defUnitStrength);
-		auto [defNKilled, defEKilled] = askCasualtyDistribution(ctx, defenderIdx, defenderRemainingStrength, defN, defE, defenderEliteStrength);
-		
-		// Defender wins: attacker loses all units, defender loses casualties
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aN, aE);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defNKilled, defEKilled);
-		
-		if (ctx.logger) {
-			Event e(EventType::BATTLE_RESOLVED,
-				defender->getFactionName() + " defeats " + attacker->getFactionName() + " in " + territoryName,
-				ctx.turnNumber, "BATTLE");
-			e.playerFaction = defender->getFactionName();
-			e.territory = territoryName;
-			ctx.logger->logEvent(e);
-		}
-		
-		// Trigger advanced faction battle-win hooks (e.g., Harkonnen capture)
-		if (ctx.featureSettings.advancedFactionAbilities) {
-			defender->getFactionAbility()->onBattleWon(ctx, attackerIdx);
-		}
-		awardWinnerSpiceForDeadLeaders(defender);
-		resolveBattleCardAftermath(defenderIdx, attackerIdx);
-		
 	} else {
+		isTie = true;
 		if (ctx.logger) {
 			ctx.logger->logDebug("Result: Tie! " + attacker->getFactionName() + " wins (attacker advantage).");
 		}
-		
-		// Winner (attacker in tie) keeps totalStrength - dialedStrength
-		auto [aN, aE] = view.map.getCombatUnitBreakdown(territoryName, attackerIdx);
-		auto [defN, defE] = view.map.getCombatUnitBreakdown(territoryName, defenderIdx);
-		
-		int totalAttackerStrength = calculateUnitStrength(attackerUnits, normalUnits, eliteUnits, attackerEliteStrength);
-		int attackerRemainingStrength = std::max(0, totalAttackerStrength - unitStrength);
-		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, attackerIdx, attackerRemainingStrength, aN, aE, attackerEliteStrength);
-		
-		// Attacker loses casualties, defender loses all units
-		view.map.removeUnitsFromTerritory(territoryName, attackerIdx, aNKilled, aEKilled);
-		view.map.removeUnitsFromTerritory(territoryName, defenderIdx, defN, defE);
-		
-		if (ctx.logger) {
-			Event e(EventType::BATTLE_RESOLVED,
-				"Tie in " + territoryName + ": " + attacker->getFactionName() + " wins",
-				ctx.turnNumber, "BATTLE");
-			e.playerFaction = attacker->getFactionName();
-			e.territory = territoryName;
-			ctx.logger->logEvent(e);
-		}
-		
-		// Trigger advanced faction battle-win hooks (attacker wins tie)
-		if (ctx.featureSettings.advancedFactionAbilities) {
-			attacker->getFactionAbility()->onBattleWon(ctx, defenderIdx);
-		}
-		awardWinnerSpiceForDeadLeaders(attacker);
-		resolveBattleCardAftermath(attackerIdx, defenderIdx);
+	}
+
+	BattleOutcomeInputs outcomeInput;
+	outcomeInput.attackerIdx = attackerIdx;
+	outcomeInput.defenderIdx = defenderIdx;
+	outcomeInput.territoryName = territoryName;
+	outcomeInput.winnerIdx = winnerIdx;
+	outcomeInput.loserIdx = loserIdx;
+	outcomeInput.winnerIsAttacker = winnerIsAttacker;
+	outcomeInput.isTie = isTie;
+	outcomeInput.attackerUnits = attackerUnits;
+	outcomeInput.defenderUnits = defenderUnits;
+	outcomeInput.normalUnits = normalUnits;
+	outcomeInput.eliteUnits = eliteUnits;
+	outcomeInput.defNormalUnits = defNormalUnits;
+	outcomeInput.defEliteUnits = defEliteUnits;
+	outcomeInput.unitStrength = unitStrength;
+	outcomeInput.defUnitStrength = defUnitStrength;
+	outcomeInput.attackerEliteStrength = attackerEliteStrength;
+	outcomeInput.defenderEliteStrength = defenderEliteStrength;
+	applyBattleOutcome(ctx, outcomeInput);
+
+	Player* winner = view.players[winnerIdx];
+	if (ctx.featureSettings.advancedFactionAbilities) {
+		winner->getFactionAbility()->onBattleWon(ctx, loserIdx);
+	}
+	awardWinnerSpiceForDeadLeaders(winner);
+	resolveBattleCardAftermath(winnerIdx, loserIdx);
+}
+
+void BattlePhase::applyBattleOutcome(PhaseContext& ctx, const BattleOutcomeInputs& input) {
+	auto view = ctx.getBattleView();
+	auto [aN, aE] = view.map.getCombatUnitBreakdown(input.territoryName, input.attackerIdx);
+	auto [defN, defE] = view.map.getCombatUnitBreakdown(input.territoryName, input.defenderIdx);
+
+	if (input.winnerIsAttacker) {
+		int totalAttackerStrength = calculateUnitStrength(input.attackerUnits, input.normalUnits,
+			input.eliteUnits, input.attackerEliteStrength);
+		int attackerRemainingStrength = std::max(0, totalAttackerStrength - input.unitStrength);
+		auto [aNKilled, aEKilled] = askCasualtyDistribution(ctx, input.attackerIdx,
+			attackerRemainingStrength, aN, aE, input.attackerEliteStrength);
+
+		view.map.removeUnitsFromTerritory(input.territoryName, input.attackerIdx, aNKilled, aEKilled);
+		view.map.removeUnitsFromTerritory(input.territoryName, input.defenderIdx, defN, defE);
+	} else {
+		int totalDefenderStrength = calculateUnitStrength(input.defenderUnits, input.defNormalUnits,
+			input.defEliteUnits, input.defenderEliteStrength);
+		int defenderRemainingStrength = std::max(0, totalDefenderStrength - input.defUnitStrength);
+		auto [defNKilled, defEKilled] = askCasualtyDistribution(ctx, input.defenderIdx,
+			defenderRemainingStrength, defN, defE, input.defenderEliteStrength);
+
+		view.map.removeUnitsFromTerritory(input.territoryName, input.attackerIdx, aN, aE);
+		view.map.removeUnitsFromTerritory(input.territoryName, input.defenderIdx, defNKilled, defEKilled);
+	}
+
+	if (ctx.logger) {
+		Player* winner = view.players[input.winnerIdx];
+		Player* loser = view.players[input.loserIdx];
+		Player* attacker = view.players[input.attackerIdx];
+		std::string msg = input.isTie
+			? ("Tie in " + input.territoryName + ": " + attacker->getFactionName() + " wins")
+			: (winner->getFactionName() + " defeats " + loser->getFactionName() + " in " + input.territoryName);
+		Event e(EventType::BATTLE_RESOLVED, msg, ctx.turnNumber, "BATTLE");
+		e.playerFaction = winner->getFactionName();
+		e.territory = input.territoryName;
+		ctx.logger->logEvent(e);
 	}
 }
 
@@ -1491,63 +1469,6 @@ std::pair<int, int> BattlePhase::askCasualtyDistribution(PhaseContext& ctx, int 
 		int normalKilled = normalAvailable - normalSurvive;
 		int eliteKilled = eliteAvailable - eliteSurvive;
 		return {normalKilled, eliteKilled};
-	}
-}
-
-int BattlePhase::selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int aliveLeaderCount) {
-	auto view = ctx.getBattleView();
-	Player* player = view.players[playerIndex];
-	
-	if (view.interactiveMode && aliveLeaderCount > 1) {
-		const auto& leaders = player->getAliveLeaders();
-		if (ctx.logger) {
-			ctx.logger->logDebug(player->getFactionName() + ", select leader for battle:");
-		}
-		for (int i = 0; i < (int)leaders.size(); ++i) {
-			if (ctx.logger) {
-				ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + leaders[i].name 
-			          + " (power:" + std::to_string(leaders[i].power) + ")");
-			}
-		}
-		if (ctx.logger) {
-			ctx.logger->logDebug("Choose (1-" + std::to_string(aliveLeaderCount) + "): ");
-		}
-		
-		int choice = -1;
-		while (choice < 1 || choice > aliveLeaderCount) {
-			std::string input;
-			std::getline(std::cin, input);
-			try {
-				choice = std::stoi(input);
-				if (choice < 1 || choice > aliveLeaderCount) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid. Try again: ");
-					}
-					choice = -1;
-				}
-			} catch (...) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid input. Try again: ");
-				}
-				choice = -1;
-			}
-		}
-		return choice - 1; // Convert to 0-indexed
-	} else {
-		// Single leader or AI mode - pick highest power
-		const auto& leaders = player->getAliveLeaders();
-		int bestIdx = 0;
-		int bestPower = -1;
-		for (int i = 0; i < (int)leaders.size(); ++i) {
-			if (leaders[i].power > bestPower) {
-				bestPower = leaders[i].power;
-				bestIdx = i;
-			}
-		}
-		if (ctx.logger) {
-			ctx.logger->logDebug(player->getFactionName() + " selects: " + leaders[bestIdx].name);
-		}
-		return bestIdx;
 	}
 }
 

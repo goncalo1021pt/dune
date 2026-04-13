@@ -12,8 +12,29 @@ class BattlePhase : public Phase {
 		void execute(PhaseContext& ctx) override;
 
 	private:
+		struct BattleOutcomeInputs {
+			int attackerIdx = -1;
+			int defenderIdx = -1;
+			std::string territoryName;
+			int winnerIdx = -1;
+			int loserIdx = -1;
+			bool winnerIsAttacker = true;
+			bool isTie = false;
+			int attackerUnits = 0;
+			int defenderUnits = 0;
+			int normalUnits = 0;
+			int eliteUnits = 0;
+			int defNormalUnits = 0;
+			int defEliteUnits = 0;
+			int unitStrength = 0;
+			int defUnitStrength = 0;
+			int attackerEliteStrength = 1;
+			int defenderEliteStrength = 1;
+		};
+
 		// Main battle resolution for a contested territory
 		void resolveBattle(PhaseContext& ctx, int attackerIdx, const std::string& territoryName);
+		void applyBattleOutcome(PhaseContext& ctx, const BattleOutcomeInputs& input);
 		
 		// Get player's battle wheel choice (0 to max units)
 		int getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int maxUnits,
@@ -29,8 +50,5 @@ class BattlePhase : public Phase {
 		// Returns casualties as (normalKilled, eliteKilled)
 		std::pair<int, int> askCasualtyDistribution(PhaseContext& ctx, int playerIndex, int remainingStrength,
 		                                             int normalAvailable, int eliteAvailable, int eliteStrength = 2);
-		
-		// Select leader for battle (must have alive leader) - returns index into alive leaders
-		int selectLeaderForBattle(PhaseContext& ctx, int playerIndex, int aliveLeaderCount);
-		
+
 };
