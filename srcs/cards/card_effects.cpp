@@ -57,9 +57,7 @@ int DefenseEffect::applyEffect(Player* attacker, Leader* attackerLeader,
 		return 0;
 	}
 
-	// Defense value = card power + defender leader battle value
 	int defense = power + defenderLeader->power;
-	
 	std::cout << "  [DEFENSE] " << cardName << " used by " << defender->getFactionName()
 	          << " (leader: " << defenderLeader->name << ")" << std::endl;
 	std::cout << "    Defense: " << defense << " (card: " << power 
