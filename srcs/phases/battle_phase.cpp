@@ -1084,6 +1084,53 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			(defenderDefense.empty() ? "None" : defenderDefense));
 	}
 
+	const bool lasgunShieldExplosion =
+		(attackerWeapon == "Lasgun" && defenderDefense == "Shield") ||
+		(defenderWeapon == "Lasgun" && attackerDefense == "Shield");
+	if (lasgunShieldExplosion) {
+		if (ctx.logger) {
+			ctx.logger->logDebug("Lasgun/Shield explosion! All forces, leaders, and spice in " +
+				territoryName + " are destroyed. Both players lose battle.");
+		}
+
+		territory* terr = view.map.getTerritory(territoryName);
+		if (terr) {
+			for (const auto& stack : terr->unitsPresent) {
+				if (stack.normal_units > 0) {
+					ctx.players[stack.factionOwner]->destroyUnits(stack.normal_units);
+				}
+				if (stack.elite_units > 0) {
+					ctx.players[stack.factionOwner]->destroyEliteUnits(stack.elite_units);
+				}
+			}
+			terr->unitsPresent.clear();
+			view.map.removeAllSpiceFromTerritory(territoryName);
+		}
+
+		if (!attackerChoice.usedCheapHero) {
+			killLeaderByName(attacker, attackerChoice.leaderName);
+		}
+		if (!defenderChoice.usedCheapHero) {
+			killLeaderByName(defender, defenderChoice.leaderName);
+		}
+
+		if (!attackerWeapon.empty()) attacker->removeTreacheryCard(attackerWeapon);
+		if (!attackerDefense.empty()) attacker->removeTreacheryCard(attackerDefense);
+		if (!defenderWeapon.empty()) defender->removeTreacheryCard(defenderWeapon);
+		if (!defenderDefense.empty()) defender->removeTreacheryCard(defenderDefense);
+		if (attackerChoice.usedCheapHero) attacker->removeTreacheryCard("Cheap Hero");
+		if (defenderChoice.usedCheapHero) defender->removeTreacheryCard("Cheap Hero");
+
+		if (ctx.logger) {
+			Event e(EventType::BATTLE_RESOLVED,
+				"Lasgun/Shield explosion in " + territoryName + ": both battle plans destroyed",
+				ctx.turnNumber, "BATTLE");
+			e.territory = territoryName;
+			ctx.logger->logEvent(e);
+		}
+		return;
+	}
+
 	// Weapon effects happen before battle values are resolved.
 	const bool attackerLeaderKilled = weaponKillsLeader(defenderWeapon, attackerDefense);
 	const bool defenderLeaderKilled = weaponKillsLeader(attackerWeapon, defenderDefense);

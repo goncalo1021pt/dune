@@ -7,6 +7,15 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 
+namespace {
+
+bool hasCard(const Player* player, const std::string& cardName) {
+	const auto& cards = player->getTreacheryCards();
+	return std::find(cards.begin(), cards.end(), cardName) != cards.end();
+}
+
+} // namespace
+
 void StormPhase::initializeStormDeck(std::vector<int>& stormDeck, std::mt19937& rng) {
 	stormDeck = {1, 2, 3, 4, 5, 6};
 	std::shuffle(stormDeck.begin(), stormDeck.end(), rng);
@@ -192,6 +201,72 @@ void StormPhase::execute(PhaseContext& ctx) {
 	view.lastStormCard    = view.nextStormCard;
 	view.hasNextStormCard = false;
 
+	int weatherController = -1;
+	if (view.turnNumber > 1) {
+		for (int idx : ctx.turnOrder) {
+			if (!hasCard(ctx.players[idx], "Weather Control")) {
+				continue;
+			}
+
+			bool play = !ctx.interactiveMode;
+			if (ctx.interactiveMode && ctx.logger) {
+				ctx.logger->logDebug(ctx.players[idx]->getFactionName() +
+					", play Weather Control to set storm movement (0-10)? (y/n): ");
+			}
+			if (ctx.interactiveMode) {
+				while (true) {
+					std::string input;
+					std::getline(std::cin >> std::ws, input);
+					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
+						play = true;
+						break;
+					}
+					if (input == "n" || input == "N" || input == "no" || input == "No") {
+						play = false;
+						break;
+					}
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid input. Enter y or n: ");
+					}
+				}
+			}
+
+			if (!play) {
+				continue;
+			}
+
+			int chosenMove = view.lastStormCard;
+			if (ctx.interactiveMode && ctx.logger) {
+				ctx.logger->logDebug("Enter storm movement sectors (0-10): ");
+			}
+			if (ctx.interactiveMode) {
+				while (true) {
+					std::string input;
+					std::getline(std::cin >> std::ws, input);
+					try {
+						int value = std::stoi(input);
+						if (value >= 0 && value <= 10) {
+							chosenMove = value;
+							break;
+						}
+					} catch (...) {
+					}
+					if (ctx.logger) {
+						ctx.logger->logDebug("Invalid value. Enter 0-10: ");
+					}
+				}
+			} else {
+				std::uniform_int_distribution<> dist(0, 10);
+				chosenMove = dist(view.rng);
+			}
+
+			ctx.players[idx]->removeTreacheryCard("Weather Control");
+			view.lastStormCard = chosenMove;
+			weatherController = idx;
+			break;
+		}
+	}
+
 	moveStorm(view.lastStormCard, view.stormSector);
 
 	// Pre-fetch next card for the next turn.
@@ -199,8 +274,16 @@ void StormPhase::execute(PhaseContext& ctx) {
 	view.hasNextStormCard = true;
 
 	if (ctx.logger) {
+		std::string movementMsg;
+		if (weatherController >= 0) {
+			movementMsg = ctx.players[weatherController]->getFactionName() +
+				" uses Weather Control. Storm moves " + std::to_string(view.lastStormCard);
+		} else {
+			movementMsg = "Storm moves " + std::to_string(view.lastStormCard);
+		}
+
 		Event e(EventType::STORM_MOVED,
-			"Storm moves " + std::to_string(view.lastStormCard) +
+			movementMsg +
 			" sectors (was " + std::to_string(prevSector) +
 			", now sector " + std::to_string(view.stormSector) + ")",
 			ctx.turnNumber, "STORM");
