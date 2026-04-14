@@ -58,24 +58,44 @@ void Player::recallUnits(int count) {
 void Player::destroyUnits(int count) {
 	if (count < 0) 
 		return;
-	int aliveUnits = reserveUnits.normal + deployedUnits.normal;
+	int aliveUnits = reserveUnits.total() + deployedUnits.total();
 	int canDestroy = std::min(count, aliveUnits);
 	
-	// Destroy deployed first, then reserve
-	int destroyDeployed = std::min(canDestroy, deployedUnits.normal);
-	int destroyReserve = canDestroy - destroyDeployed;
-	
-	deployedUnits.normal -= destroyDeployed;
-	reserveUnits.normal -= destroyReserve;
-	destroyedUnits.normal += canDestroy;
+	int remaining = canDestroy;
+
+	// Destroy normal deployed first, then normal reserve.
+	int destroyNormalDeployed = std::min(remaining, deployedUnits.normal);
+	deployedUnits.normal -= destroyNormalDeployed;
+	destroyedUnits.normal += destroyNormalDeployed;
+	remaining -= destroyNormalDeployed;
+
+	int destroyNormalReserve = std::min(remaining, reserveUnits.normal);
+	reserveUnits.normal -= destroyNormalReserve;
+	destroyedUnits.normal += destroyNormalReserve;
+	remaining -= destroyNormalReserve;
+
+	// If caller requested more units, spill over into elite pools.
+	int destroyEliteDeployed = std::min(remaining, deployedUnits.elite);
+	deployedUnits.elite -= destroyEliteDeployed;
+	destroyedUnits.elite += destroyEliteDeployed;
+	remaining -= destroyEliteDeployed;
+
+	int destroyEliteReserve = std::min(remaining, reserveUnits.elite);
+	reserveUnits.elite -= destroyEliteReserve;
+	destroyedUnits.elite += destroyEliteReserve;
 }
 
 void Player::reviveUnits(int count) {
 	if (count < 0) 
 		return;
-	int canRevive = std::min(count, destroyedUnits.normal);
-	destroyedUnits.normal -= canRevive;
-	reserveUnits.normal += canRevive;
+	int canRevive = std::min(count, destroyedUnits.total());
+	int reviveNormal = std::min(canRevive, destroyedUnits.normal);
+	destroyedUnits.normal -= reviveNormal;
+	reserveUnits.normal += reviveNormal;
+
+	int reviveElite = canRevive - reviveNormal;
+	destroyedUnits.elite -= reviveElite;
+	reserveUnits.elite += reviveElite;
 }
 
 void Player::deployEliteUnits(int count) {

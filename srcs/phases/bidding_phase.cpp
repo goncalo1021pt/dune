@@ -208,24 +208,24 @@ int BiddingPhase::biddingRoundForCard(PhaseContext& ctx, int startingPlayerIndex
 		// If only 1 player remains and someone has raised, they win
 		if (activeBidders.size() == 1 && anyoneRaised) {
 			highestBidder = *activeBidders.begin();
+			int spiceBefore = view.players[highestBidder]->getSpice();
+			if (currentBid > 0) {
+				view.players[highestBidder]->removeSpice(currentBid);
+				for (size_t i = 0; i < ctx.players.size(); ++i) {
+					FactionAbility* ability = ctx.getAbility(i);
+					if (ability) {
+						ability->onOtherFactionPaidForCard(ctx, highestBidder, currentBid);
+					}
+				}
+			}
+			int spiceAfter = view.players[highestBidder]->getSpice();
 			
 			if (ctx.logger) {
 				std::string winMsg = "Winner: " + view.players[highestBidder]->getFactionName() + 
 					" (bid: " + std::to_string(currentBid) + " spice)";
 				if (currentBid > 0) {
-					int spaceBefore = view.players[highestBidder]->getSpice();
-					view.players[highestBidder]->removeSpice(currentBid);
-					int spaceAfter = view.players[highestBidder]->getSpice();
 					winMsg += " - pays " + std::to_string(currentBid) + " spice (" + 
-						std::to_string(spaceBefore) + " -> " + std::to_string(spaceAfter) + ")";
-					
-					// Notify all factions that a payment was made (Emperor hook)
-					for (size_t i = 0; i < ctx.players.size(); ++i) {
-						FactionAbility* ability = ctx.getAbility(i);
-						if (ability) {
-							ability->onOtherFactionPaidForCard(ctx, highestBidder, currentBid);
-						}
-					}
+						std::to_string(spiceBefore) + " -> " + std::to_string(spiceAfter) + ")";
 				}
 				ctx.logger->logDebug(winMsg);
 			}

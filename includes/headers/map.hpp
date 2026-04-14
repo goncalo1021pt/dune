@@ -127,6 +127,10 @@ class GameMap {
 		// Returns amount actually removed (may be less than requested).
 		int removeSpiceFromSector(const std::string& territoryName, int amount, int sector);
 
+		// Remove spice from a territory across all sectors.
+		// Returns amount actually removed (may be less than requested).
+		int removeSpiceFromTerritory(const std::string& territoryName, int amount);
+
 		// Remove all spice from a territory.
 		void removeAllSpiceFromTerritory(const std::string& territoryName);
 

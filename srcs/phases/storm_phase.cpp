@@ -69,7 +69,12 @@ void StormPhase::applyStormDamage(PhaseContext& ctx, int prevSector, int move) {
 				int killedElite  = (stack.elite_units  + 1) / 2;
 				stack.normal_units -= killedNormal;
 				stack.elite_units  -= killedElite;
-				ctx.players[stack.factionOwner]->destroyUnits(killedNormal + killedElite);
+				if (killedNormal > 0) {
+					ctx.players[stack.factionOwner]->destroyUnits(killedNormal);
+				}
+				if (killedElite > 0) {
+					ctx.players[stack.factionOwner]->destroyEliteUnits(killedElite);
+				}
 				totalKilled += killedNormal + killedElite;
 
 				if (ctx.logger && (killedNormal + killedElite) > 0) {
@@ -83,8 +88,15 @@ void StormPhase::applyStormDamage(PhaseContext& ctx, int prevSector, int move) {
 				}
 			} else {
 				// Everyone else: entire stack in the damaged sector is destroyed.
-				int killed = stack.normal_units + stack.elite_units;
-				ctx.players[stack.factionOwner]->destroyUnits(killed);
+				int killedNormal = stack.normal_units;
+				int killedElite = stack.elite_units;
+				if (killedNormal > 0) {
+					ctx.players[stack.factionOwner]->destroyUnits(killedNormal);
+				}
+				if (killedElite > 0) {
+					ctx.players[stack.factionOwner]->destroyEliteUnits(killedElite);
+				}
+				int killed = killedNormal + killedElite;
 				totalKilled += killed;
 
 				if (ctx.logger && killed > 0) {
