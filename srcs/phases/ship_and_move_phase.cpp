@@ -14,6 +14,11 @@
 
 namespace {
 
+bool hasCard(const Player* player, const std::string& cardName) {
+	const auto& cards = player->getTreacheryCards();
+	return std::find(cards.begin(), cards.end(), cardName) != cards.end();
+}
+
 struct GuildSourceSelection {
 	std::string territory;
 	int sector;
@@ -786,10 +791,91 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 		return false;
 	}
 	
-	return moveUnits(ctx, player->getFactionIndex(),
+	bool moved = moveUnits(ctx, player->getFactionIndex(),
 	                 decision.fromTerritory, decision.fromSector,
 	                 decision.toTerritory,   decision.toSector,
 	                 decision.normalUnits,   decision.eliteUnits);
+
+	if (!moved) {
+		return false;
+	}
+
+	if (hasCard(player, "Hajr")) {
+		bool playHajr = !view.interactiveMode;
+		if (view.interactiveMode) {
+			if (ctx.logger) {
+				ctx.logger->logDebug(player->getFactionName() +
+					", play Hajr for a second movement this phase? (y/n): ");
+			}
+			while (true) {
+				std::string input;
+				std::getline(std::cin >> std::ws, input);
+				if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
+					playHajr = true;
+					break;
+				}
+				if (input == "n" || input == "N" || input == "no" || input == "No") {
+					playHajr = false;
+					break;
+				}
+				if (ctx.logger) {
+					ctx.logger->logDebug("Invalid input. Enter y or n: ");
+				}
+			}
+		}
+
+		if (playHajr) {
+			player->removeTreacheryCard("Hajr");
+			if (ctx.logger) {
+				ctx.logger->logDebug("[Hajr] " + player->getFactionName() +
+					" gains one extra movement action.");
+			}
+
+			MovementDecision extraDecision;
+			if (view.interactiveMode) {
+				std::vector<std::string> territoriesWithUnits =
+					view.map.getTerritoriesWithUnits(player->getFactionIndex());
+				auto choice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
+				extraDecision.fromTerritory = choice.fromTerritory;
+				extraDecision.toTerritory   = choice.toTerritory;
+				extraDecision.normalUnits   = choice.normalUnits;
+				extraDecision.eliteUnits    = choice.eliteUnits;
+				extraDecision.shouldMove    = choice.shouldMove;
+				extraDecision.fromSector    = choice.fromSector;
+				extraDecision.toSector      = choice.toSector;
+			} else {
+				extraDecision = aiDecideMovement(ctx, player, movementRange);
+			}
+
+			if (extraDecision.shouldMove) {
+				if (extraDecision.fromSector == -1) {
+					const territory* src = view.map.getTerritory(extraDecision.fromTerritory);
+					if (src) {
+						for (int s : src->sectors) {
+							if (GameMap::canLeaveSector(s, ctx.stormSector) &&
+								view.map.getUnitsInTerritorySector(extraDecision.fromTerritory,
+									player->getFactionIndex(), s) > 0) {
+								extraDecision.fromSector = s;
+								break;
+							}
+						}
+					}
+				}
+				if (extraDecision.toSector == -1) {
+					const territory* dest = view.map.getTerritory(extraDecision.toTerritory);
+					extraDecision.toSector = GameMap::firstSafeSector(dest, ctx.stormSector);
+				}
+				if (extraDecision.fromSector != -1 && extraDecision.toSector != -1) {
+					(void)moveUnits(ctx, player->getFactionIndex(),
+						extraDecision.fromTerritory, extraDecision.fromSector,
+						extraDecision.toTerritory,   extraDecision.toSector,
+						extraDecision.normalUnits,   extraDecision.eliteUnits);
+				}
+			}
+		}
+	}
+
+	return true;
 }
 
 int ShipAndMovePhase::calculateMovementRange(PhaseContext& ctx, int factionIndex) const {
