@@ -4,6 +4,7 @@ objs/
 *.a
 *.so
 dune
+tests/run
 
 # IDE
 .vscode/
