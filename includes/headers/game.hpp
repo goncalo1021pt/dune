@@ -14,6 +14,7 @@
 #include "cards/spice_deck.hpp"
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
+#include "events/game_event_bus.hpp"
 
 // Forward declarations
 class EventLogger;
@@ -100,8 +101,12 @@ class Game {
 		std::vector<std::unique_ptr<Phase>> phases;
 
 		bool interactiveMode;
-		
-		// Event logging
+
+		// Event bus: canonical event log + pub/sub for engine systems.
+		// Constructed before eventLogger (BusBridgeLogger holds a reference to it).
+		GameEventBus eventBus;
+
+		// Event logging (BusBridgeLogger wrapping ConsoleEventLogger during migration).
 		std::unique_ptr<EventLogger> eventLogger;
 
 		// Game state
@@ -133,4 +138,8 @@ class Game {
 		const std::vector<territory>& getTerritories() const;
 		bool isInteractiveMode() const;
 		const std::vector<int>& getTurnOrder() const;
+
+		// Event bus accessor (used by tests, the FFI layer, and future Godot bridge).
+		const GameEventBus& getEventBus() const { return eventBus; }
+		GameEventBus& getEventBus() { return eventBus; }
 };

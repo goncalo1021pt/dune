@@ -1,6 +1,7 @@
 #include "game.hpp"
 #include "leader.hpp"
 #include "logger/console_event_logger.hpp"
+#include "logger/bus_bridge_logger.hpp"
 #include "phases/phase_context.hpp"
 #include "phases/storm_phase.hpp"
 #include "phases/spice_blow_phase.hpp"
@@ -41,7 +42,10 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive, GameFeatureSetti
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
 	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
 	  treacheryDeck(rng), traitorDeck(rng), phases(), interactiveMode(interactive),
-	  eventLogger(std::make_unique<ConsoleEventLogger>()), gameEnded(false),
+	  eventBus(),
+	  eventLogger(std::make_unique<BusBridgeLogger>(
+		  std::make_unique<ConsoleEventLogger>(), eventBus)),
+	  gameEnded(false),
 	  featureSettings(featureSettings) {
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
