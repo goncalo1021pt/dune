@@ -4,6 +4,7 @@
 #include <leader.hpp>
 #include <map.hpp>
 #include <cards/treachery_deck.hpp>
+#include "interaction/interaction_adapter.hpp"
 #include <iostream>
 #include <algorithm>
 #include <sstream>
@@ -12,13 +13,6 @@
 #include "logger/event_logger.hpp"
 
 namespace {
-
-std::string toLower(std::string value) {
-	for (char& ch : value) {
-		ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-	}
-	return value;
-}
 
 treacheryCardType getTreacheryTypeFromName(const std::string& cardName) {
 	if (cardName == "Crysknife" || cardName == "Maula Pistol" ||
@@ -98,49 +92,23 @@ std::string selectBattleCard(PhaseContext& ctx, Player* player,
 		return "";
 	}
 
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "select";
+		req.actor_index = -1;  // caller sets player index implicitly via player ptr
+		req.prompt = player->getFactionName() + ", choose a " + label + " card:";
+		req.options = available;
+		req.allow_none = allowNone;
+		auto resp = ctx.adapter->requestDecision(req);
+		return (resp && resp->valid) ? resp->payload_json : "";
+	}
+
+	// AI / non-interactive fallback: pick first available.
 	auto view = ctx.getBattleView();
 	if (!view.interactiveMode) {
 		return available[0];
 	}
-
-	if (ctx.logger) {
-		ctx.logger->logDebug(player->getFactionName() + ", choose a " + label + " card:");
-		if (allowNone) {
-			ctx.logger->logDebug("  0. None");
-		}
-		for (size_t i = 0; i < available.size(); ++i) {
-			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + available[i]);
-		}
-		if (allowNone) {
-			ctx.logger->logDebug("Choose (0-" + std::to_string(available.size()) + "): ");
-		} else {
-			ctx.logger->logDebug("Choose (1-" + std::to_string(available.size()) + "): ");
-		}
-	}
-
-	while (true) {
-		std::string input;
-		std::getline(std::cin, input);
-		try {
-			int choice = std::stoi(input);
-			if (allowNone && choice == 0) {
-				return "";
-			}
-			if (choice >= 1 && choice <= static_cast<int>(available.size())) {
-				return available[choice - 1];
-			}
-		} catch (...) {
-			for (const std::string& card : available) {
-				if (toLower(card) == toLower(input)) {
-					return card;
-				}
-			}
-		}
-
-		if (ctx.logger) {
-			ctx.logger->logDebug("Invalid choice. Try again: ");
-		}
-	}
+	return available[0];
 }
 
 bool weaponKillsLeader(const std::string& weaponCard, const std::string& defenseCard) {
@@ -235,53 +203,45 @@ BattleLeaderChoice selectBattleLeaderChoice(PhaseContext& ctx, Player* player,
 		return choice;
 	}
 
-	if (ctx.logger) {
-		ctx.logger->logDebug(player->getFactionName() + ", select leader for battle:");
-	}
-	for (int i = 0; i < static_cast<int>(leaders.size()); ++i) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + leaders[i].name +
-				" (power:" + std::to_string(leaders[i].power) + ")");
+	if (ctx.adapter) {
+		std::vector<std::string> options;
+		for (const auto& l : leaders) {
+			options.push_back(l.name + " (power:" + std::to_string(l.power) + ")");
 		}
-	}
-	int cheapOption = -1;
-	if (cheapHeroAvailable) {
-		cheapOption = static_cast<int>(leaders.size()) + 1;
-		if (ctx.logger) {
-			ctx.logger->logDebug("  " + std::to_string(cheapOption) + ". Cheap Hero (power:0)");
-		}
-	}
-	if (ctx.logger) {
-		ctx.logger->logDebug("Choose (1-" + std::to_string(static_cast<int>(leaders.size()) + (cheapHeroAvailable ? 1 : 0)) + "): ");
-	}
-
-	while (true) {
-		std::string input;
-		std::getline(std::cin, input);
-		try {
-			int pick = std::stoi(input);
-			if (pick >= 1 && pick <= static_cast<int>(leaders.size())) {
-				int idx = pick - 1;
-				choice.valid = true;
-				choice.aliveLeaderIndex = idx;
-				choice.leaderName = leaders[idx].name;
-				choice.leaderPower = leaders[idx].power;
-				return choice;
-			}
-			if (cheapHeroAvailable && pick == cheapOption) {
-				choice.valid = true;
-				choice.usedCheapHero = true;
-				choice.leaderName = "Cheap Hero";
-				choice.leaderPower = 0;
-				return choice;
-			}
-		} catch (...) {
+		if (cheapHeroAvailable) {
+			options.push_back("Cheap Hero (power:0)");
 		}
 
-		if (ctx.logger) {
-			ctx.logger->logDebug("Invalid input. Try again: ");
+		DecisionRequest req;
+		req.kind = "select";
+		req.prompt = player->getFactionName() + ", select leader for battle:";
+		req.options = options;
+		req.allow_none = false;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid || resp->payload_json.empty()) {
+			return choice;
 		}
+
+		// The response is the option string; match it back to a leader.
+		for (int i = 0; i < static_cast<int>(leaders.size()); ++i) {
+			const std::string optStr = leaders[i].name + " (power:" + std::to_string(leaders[i].power) + ")";
+			if (resp->payload_json == optStr) {
+				choice.valid = true;
+				choice.aliveLeaderIndex = i;
+				choice.leaderName = leaders[i].name;
+				choice.leaderPower = leaders[i].power;
+				return choice;
+			}
+		}
+		if (cheapHeroAvailable && resp->payload_json == "Cheap Hero (power:0)") {
+			choice.valid = true;
+			choice.usedCheapHero = true;
+			choice.leaderName = "Cheap Hero";
+			choice.leaderPower = 0;
+		}
+		return choice;
 	}
+	return choice;
 }
 
 enum class BattleElementToPeek {
@@ -450,57 +410,49 @@ BeneVoiceState prepareBeneVoiceForBattle(PhaseContext& ctx, int attackerIdx, int
 	voice.beneIdx = beneIdx;
 	voice.targetIdx = targetIdx;
 
-	if (!ctx.interactiveMode) {
+	if (!ctx.adapter) {
 		voice.active = false;
 		return voice;
 	}
 
-	if (ctx.logger) {
-		ctx.logger->logDebug("[Bene Voice] Use Voice against " + targetPlayer->getFactionName() + " this battle? (y/n): ");
-	}
-	std::string useVoice;
-	std::getline(std::cin >> std::ws, useVoice);
-	std::string lowered = toLower(useVoice);
-	if (!(lowered == "y" || lowered == "yes")) {
-		voice.active = false;
-		return voice;
+	{
+		DecisionRequest req;
+		req.kind = "yn";
+		req.actor_index = voice.beneIdx;
+		req.prompt = "[Bene Voice] Use Voice against " + targetPlayer->getFactionName() + " this battle?";
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid || resp->payload_json != "y") {
+			voice.active = false;
+			return voice;
+		}
 	}
 
-	if (ctx.logger) {
-		ctx.logger->logDebug("[Bene Voice] Command type:");
-		ctx.logger->logDebug("  1. PLAY poison weapon");
-		ctx.logger->logDebug("  2. DON'T PLAY poison weapon");
-		ctx.logger->logDebug("  3. PLAY projectile weapon");
-		ctx.logger->logDebug("  4. DON'T PLAY projectile weapon");
-		ctx.logger->logDebug("  5. PLAY lasgun");
-		ctx.logger->logDebug("  6. DON'T PLAY lasgun");
-		ctx.logger->logDebug("  7. PLAY shield");
-		ctx.logger->logDebug("  8. DON'T PLAY shield");
-		ctx.logger->logDebug("  9. PLAY snooper");
-		ctx.logger->logDebug("  10. DON'T PLAY snooper");
-		ctx.logger->logDebug("  11. PLAY worthless card");
-		ctx.logger->logDebug("  12. DON'T PLAY worthless card");
-		ctx.logger->logDebug("  13. PLAY cheap hero");
-		ctx.logger->logDebug("  14. DON'T PLAY cheap hero");
-		ctx.logger->logDebug("Choose (1-14): ");
-	}
+	static const std::vector<std::string> voiceOptions = {
+		"PLAY poison weapon", "DON'T PLAY poison weapon",
+		"PLAY projectile weapon", "DON'T PLAY projectile weapon",
+		"PLAY lasgun", "DON'T PLAY lasgun",
+		"PLAY shield", "DON'T PLAY shield",
+		"PLAY snooper", "DON'T PLAY snooper",
+		"PLAY worthless card", "DON'T PLAY worthless card",
+		"PLAY cheap hero", "DON'T PLAY cheap hero"
+	};
 
 	int cmd = 0;
-	while (true) {
-		std::string input;
-		std::getline(std::cin >> std::ws, input);
-		try {
-			int pick = std::stoi(input);
-			if (pick >= 1 && pick <= 14) {
-				cmd = pick;
-				break;
+	{
+		DecisionRequest req;
+		req.kind = "select";
+		req.actor_index = voice.beneIdx;
+		req.prompt = "[Bene Voice] Command type:";
+		req.options = voiceOptions;
+		req.allow_none = false;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid) {
+			for (int i = 0; i < (int)voiceOptions.size(); ++i) {
+				if (voiceOptions[i] == resp->payload_json) { cmd = i + 1; break; }
 			}
-		} catch (...) {
-		}
-		if (ctx.logger) {
-			ctx.logger->logDebug("Invalid input. Choose (1-14): ");
 		}
 	}
+	if (cmd == 0) { voice.active = false; return voice; }
 
 	voice.demandPlay = (cmd % 2 == 1);
 	switch (cmd) {
@@ -549,30 +501,18 @@ BattleElementToPeek askAtreidesWhichElementToPeek(PhaseContext& ctx, const Playe
 			" asks " + opponent->getFactionName() + " about one Battle Plan element.");
 	}
 
-	if (ctx.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Atreides Prescience] Choose which element to reveal from opponent:");
-			ctx.logger->logDebug("  1. Leader");
-			ctx.logger->logDebug("  2. Weapon");
-			ctx.logger->logDebug("  3. Defense");
-			ctx.logger->logDebug("  4. Dial (wheel value)");
-			ctx.logger->logDebug("Choose (1-4): ");
-		}
-
-		while (true) {
-			std::string input;
-			std::getline(std::cin >> std::ws, input);
-			try {
-				int pick = std::stoi(input);
-				if (pick >= 1 && pick <= 4) {
-					choice = static_cast<BattleElementToPeek>(pick);
-					break;
-				}
-			} catch (...) {
-			}
-			if (ctx.logger) {
-				ctx.logger->logDebug("Invalid input. Choose (1-4): ");
-			}
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "select";
+		req.prompt = "[Atreides Prescience] Choose which element to reveal from opponent:";
+		req.options = {"Leader", "Weapon", "Defense", "Dial (wheel value)"};
+		req.allow_none = false;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid) {
+			if      (resp->payload_json == "Leader")            choice = BattleElementToPeek::LEADER;
+			else if (resp->payload_json == "Weapon")            choice = BattleElementToPeek::WEAPON;
+			else if (resp->payload_json == "Defense")           choice = BattleElementToPeek::DEFENSE;
+			else if (resp->payload_json == "Dial (wheel value)") choice = BattleElementToPeek::DIAL;
 		}
 	}
 
@@ -737,41 +677,25 @@ void BattlePhase::execute(PhaseContext& ctx) {
 
 		// Player resolves battles in contested territories
 		while (!contestedTerritories.empty()) {
-			if (view.interactiveMode && contestedTerritories.size() > 1) {
-				// Ask player which battle to resolve first
-				if (ctx.logger) {
-					ctx.logger->logDebug(attacker->getFactionName() + "'s contested territories:");
+			if (ctx.adapter && contestedTerritories.size() > 1) {
+				DecisionRequest req;
+				req.kind = "select";
+				req.actor_index = playerIdx;
+				req.prompt = attacker->getFactionName() + "'s contested territories — choose which to battle first:";
+				req.options = contestedTerritories;
+				req.allow_none = false;
+				auto resp = ctx.adapter->requestDecision(req);
+				std::string chosen = contestedTerritories[0];
+				if (resp && resp->valid && !resp->payload_json.empty()) {
+					chosen = resp->payload_json;
 				}
-				for (size_t i = 0; i < contestedTerritories.size(); ++i) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + contestedTerritories[i]);
-					}
-				}
-				if (ctx.logger) {
-					ctx.logger->logDebug("Choose which to battle (1-" + std::to_string(contestedTerritories.size()) + "): ");
-				}
-				
 				int choice = 0;
-				std::string input;
-				while (true) {
-					std::getline(std::cin, input);
-					try {
-						choice = std::stoi(input);
-						if (choice >= 1 && choice <= (int)contestedTerritories.size()) {
-							break;
-						}
-					} catch (...) {}
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid choice. Try again: ");
-					}
+				for (int i = 0; i < (int)contestedTerritories.size(); ++i) {
+					if (contestedTerritories[i] == chosen) { choice = i; break; }
 				}
-				choice--; // Convert to 0-indexed
-				
-				// Resolve this battle
+
 				resolveBattle(ctx, playerIdx, contestedTerritories[choice]);
 				totalBattles++;
-				
-				// Remove from list
 				contestedTerritories.erase(contestedTerritories.begin() + choice);
 			} else if (!contestedTerritories.empty()) {
 				// Only one contested territory or non-interactive mode
@@ -1212,13 +1136,12 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			}
 
 			bool keep = true;
-			if (view.interactiveMode) {
-				if (ctx.logger) {
-					ctx.logger->logDebug(winner->getFactionName() + ", keep card \"" + cardName + "\"? (y/n): ");
-				}
-				std::string input;
-				std::getline(std::cin, input);
-				keep = (input == "y" || input == "Y" || input == "yes" || input == "Yes");
+			if (ctx.adapter) {
+				DecisionRequest req;
+				req.kind = "yn";
+				req.prompt = winner->getFactionName() + ", keep card \"" + cardName + "\"?";
+				auto resp = ctx.adapter->requestDecision(req);
+				keep = resp && resp->valid && resp->payload_json == "y";
 			}
 
 			if (!keep) {
@@ -1403,32 +1326,18 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 		maxStrength = calculateUnitStrength(maxUnits, n, e, eliteStrength);
 	}
 	
-	if (view.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug(player->getFactionName() + ", enter battle strength (0-" + std::to_string(maxStrength) + "): ");
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "int";
+		req.actor_index = playerIndex;
+		req.prompt = player->getFactionName() + ", enter battle strength (0-" + std::to_string(maxStrength) + "): ";
+		req.int_min = 0;
+		req.int_max = maxStrength;
+		auto resp = ctx.adapter->requestDecision(req);
+		int choice = 0;
+		if (resp && resp->valid) {
+			try { choice = std::stoi(resp->payload_json); } catch (...) {}
 		}
-		
-		int choice = -1;
-		while (choice < 0 || choice > maxStrength) {
-			std::string input;
-			std::getline(std::cin, input);
-			try {
-				choice = std::stoi(input);
-				if (choice < 0 || choice > maxStrength) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid. Must be 0-" + std::to_string(maxStrength) + ": ");
-					}
-					choice = -1;
-				}
-			} catch (...) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid input. Try again: ");
-				}
-				choice = -1;
-			}
-		}
-		
-		// Convert strength to unit count for removal calculation
 		return convertStrengthToUnitCount(choice, normalAvailable, eliteAvailable, eliteStrength);
 	} else {
 		// AI: random strength choice 0 to maxStrength
@@ -1479,43 +1388,28 @@ std::pair<int, int> BattlePhase::askCasualtyDistribution(PhaseContext& ctx, int 
 		return {normalAvailable - normalSurvive, eliteAvailable - eliteSurvive};
 	}
 	
-	if (view.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug(player->getFactionName() + " keeps " + std::to_string(remainingStrength) + " strength after battle.");
-			ctx.logger->logDebug("How many elite units survive? (" + std::to_string(minEliteSurvive) + "-" + std::to_string(maxEliteSurvive) + "): ");
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "int";
+		req.actor_index = playerIndex;
+		req.prompt = player->getFactionName() + " keeps " + std::to_string(remainingStrength)
+			+ " strength. How many elite units survive? ("
+			+ std::to_string(minEliteSurvive) + "-" + std::to_string(maxEliteSurvive) + "): ";
+		req.int_min = minEliteSurvive;
+		req.int_max = maxEliteSurvive;
+		auto resp = ctx.adapter->requestDecision(req);
+		int eliteSurvive = maxEliteSurvive;
+		if (resp && resp->valid) {
+			try { eliteSurvive = std::stoi(resp->payload_json); } catch (...) {}
+			eliteSurvive = std::max(minEliteSurvive, std::min(maxEliteSurvive, eliteSurvive));
 		}
-		
-		int eliteSurvive = -1;
-		while (eliteSurvive < minEliteSurvive || eliteSurvive > maxEliteSurvive) {
-			std::string input;
-			std::getline(std::cin, input);
-			try {
-				eliteSurvive = std::stoi(input);
-				if (eliteSurvive < minEliteSurvive || eliteSurvive > maxEliteSurvive) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid. Must be " + std::to_string(minEliteSurvive) + "-" + std::to_string(maxEliteSurvive) + ": ");
-					}
-					eliteSurvive = -1;
-				}
-			} catch (...) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid input. Try again: ");
-				}
-				eliteSurvive = -1;
-			}
-		}
-
 		int normalSurvive = remainingStrength - (eliteSurvive * eliteStrength);
-		int normalKilled = normalAvailable - normalSurvive;
-		int eliteKilled = eliteAvailable - eliteSurvive;
-		return {normalKilled, eliteKilled};
+		return {normalAvailable - normalSurvive, eliteAvailable - eliteSurvive};
 	} else {
 		// AI: keep as many elite as possible among feasible survivor choices.
 		int eliteSurvive = maxEliteSurvive;
 		int normalSurvive = remainingStrength - (eliteSurvive * eliteStrength);
-		int normalKilled = normalAvailable - normalSurvive;
-		int eliteKilled = eliteAvailable - eliteSurvive;
-		return {normalKilled, eliteKilled};
+		return {normalAvailable - normalSurvive, eliteAvailable - eliteSurvive};
 	}
 }
 

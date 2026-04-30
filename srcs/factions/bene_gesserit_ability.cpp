@@ -5,6 +5,7 @@
 #include "events/event.hpp"
 #include "settings.hpp"
 #include "map.hpp"
+#include "interaction/interaction_adapter.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -41,52 +42,21 @@ void BeneGesseritAbility::placeStartingForces(PhaseContext& ctx) {
 		std::string chosenTerritory;
 		const auto& territories = ctx.map.getTerritories();
 
-		if (ctx.interactiveMode) {
-			if (ctx.logger) {
-				ctx.logger->logDebug("=== BENE GESSERIT ADVANCED START PLACEMENT ===");
-				ctx.logger->logDebug("After Fremen placement, choose one territory for your starting peaceful advisor:");
-				for (size_t i = 0; i < territories.size(); ++i) {
-					ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + territories[i].name);
+		if (ctx.adapter) {
+			std::vector<std::string> options;
+			for (const auto& terr : territories) {
+				if (ctx.map.canAddFactionToTerritory(terr.name, beneIndex)) {
+					options.push_back(terr.name);
 				}
-				ctx.logger->logDebug("Choose territory by number or exact name: ");
 			}
-
-			while (true) {
-				std::string input;
-				std::getline(std::cin >> std::ws, input);
-
-				if (input.empty()) {
-					if (ctx.logger) ctx.logger->logDebug("Invalid choice. Try again: ");
-					continue;
-				}
-
-				bool matched = false;
-				try {
-					int idx = std::stoi(input);
-					if (idx >= 1 && idx <= static_cast<int>(territories.size())) {
-						chosenTerritory = territories[static_cast<size_t>(idx - 1)].name;
-						matched = true;
-					}
-				} catch (...) {
-				}
-
-				if (!matched) {
-					for (const auto& terr : territories) {
-						if (terr.name == input) {
-							chosenTerritory = terr.name;
-							matched = true;
-							break;
-						}
-					}
-				}
-
-				if (matched && ctx.map.canAddFactionToTerritory(chosenTerritory, beneIndex)) {
-					break;
-				}
-
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid territory (or occupied by two other factions). Try again: ");
-				}
+			DecisionRequest req;
+			req.kind = "select";
+			req.actor_index = beneIndex;
+			req.prompt = "=== BENE GESSERIT ADVANCED START PLACEMENT ===\nChoose one territory for your starting peaceful advisor:";
+			req.options = options;
+			auto resp = ctx.adapter->requestDecision(req);
+			if (resp && resp->valid && !resp->payload_json.empty()) {
+				chosenTerritory = resp->payload_json;
 			}
 		} else {
 			for (const auto& terr : territories) {
@@ -245,29 +215,14 @@ void BeneGesseritAbility::onOtherFactionShipped(PhaseContext& ctx, int shippingF
 	}
 
 	bool shipAdvisor = true;
-	if (ctx.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Bene Gesserit] Spiritual Advisors: ship 1 advisor to " +
-				destinationTerritory + " for free? (y/n): ");
-		}
-		while (true) {
-			std::string input;
-			std::getline(std::cin >> std::ws, input);
-			std::string lowered;
-			lowered.reserve(input.size());
-			for (char c : input) lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-			if (lowered == "y" || lowered == "yes") {
-				shipAdvisor = true;
-				break;
-			}
-			if (lowered == "n" || lowered == "no") {
-				shipAdvisor = false;
-				break;
-			}
-			if (ctx.logger) {
-				ctx.logger->logDebug("Invalid input. Enter y or n: ");
-			}
-		}
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "yn";
+		req.actor_index = beneIndex;
+		req.prompt = "[Bene Gesserit] Spiritual Advisors: ship 1 advisor to " +
+			destinationTerritory + " for free?";
+		auto resp = ctx.adapter->requestDecision(req);
+		shipAdvisor = resp && resp->valid && resp->payload_json == "y";
 	}
 
 	if (!shipAdvisor) return;
@@ -319,61 +274,38 @@ void BeneGesseritAbility::choosePrediction(PhaseContext& ctx, int beneIndex) {
 	}
 	if (candidates.empty()) return;
 
-	if (!ctx.interactiveMode) {
-		int pick = candidates[0];
-		predictedFaction = ctx.players[pick]->getFactionName();
-		predictedTurn = std::min(5, MAX_TURNS);
-		predictionSet = true;
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Bene Gesserit] A secret prediction has been set.");
-		}
-		return;
-	}
+	int factionPick = candidates[0];
+	int turnPick = std::min(5, MAX_TURNS);
 
-	if (ctx.logger) {
-		ctx.logger->logDebug("[Bene Gesserit] Secret Prediction setup");
-		ctx.logger->logDebug("Choose the faction you predict will win:");
-		for (size_t i = 0; i < candidates.size(); ++i) {
-			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + ctx.players[candidates[i]]->getFactionName());
+	if (ctx.adapter) {
+		std::vector<std::string> factionOptions;
+		for (int c : candidates) {
+			factionOptions.push_back(ctx.players[c]->getFactionName());
 		}
-		ctx.logger->logDebug("Choose (1-" + std::to_string(candidates.size()) + "): ");
-	}
-
-	int factionPick = -1;
-	while (true) {
-		std::string input;
-		std::getline(std::cin >> std::ws, input);
-		try {
-			int idx = std::stoi(input);
-			if (idx >= 1 && idx <= static_cast<int>(candidates.size())) {
-				factionPick = candidates[static_cast<size_t>(idx - 1)];
-				break;
+		DecisionRequest fReq;
+		fReq.kind = "select";
+		fReq.actor_index = beneIndex;
+		fReq.prompt = "[Bene Gesserit] Secret Prediction: Choose the faction you predict will win:";
+		fReq.options = factionOptions;
+		auto fResp = ctx.adapter->requestDecision(fReq);
+		if (fResp && fResp->valid) {
+			for (size_t i = 0; i < factionOptions.size(); ++i) {
+				if (factionOptions[i] == fResp->payload_json) {
+					factionPick = candidates[i];
+					break;
+				}
 			}
-		} catch (...) {
 		}
-		if (ctx.logger) {
-			ctx.logger->logDebug("Invalid choice. Try again: ");
-		}
-	}
 
-	if (ctx.logger) {
-		ctx.logger->logDebug("Choose the turn number to predict (1-" + std::to_string(MAX_TURNS) + "): ");
-	}
-
-	int turnPick = 1;
-	while (true) {
-		std::string input;
-		std::getline(std::cin >> std::ws, input);
-		try {
-			int t = std::stoi(input);
-			if (t >= 1 && t <= MAX_TURNS) {
-				turnPick = t;
-				break;
-			}
-		} catch (...) {
-		}
-		if (ctx.logger) {
-			ctx.logger->logDebug("Invalid turn. Try again: ");
+		DecisionRequest tReq;
+		tReq.kind = "int";
+		tReq.actor_index = beneIndex;
+		tReq.prompt = "Choose the turn number to predict (1-" + std::to_string(MAX_TURNS) + "): ";
+		tReq.int_min = 1;
+		tReq.int_max = MAX_TURNS;
+		auto tResp = ctx.adapter->requestDecision(tReq);
+		if (tResp && tResp->valid) {
+			try { turnPick = std::stoi(tResp->payload_json); } catch (...) {}
 		}
 	}
 

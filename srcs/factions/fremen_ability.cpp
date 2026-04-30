@@ -3,6 +3,7 @@
 #include "phases/phase_context.hpp"
 #include "logger/event_logger.hpp"
 #include "map.hpp"
+#include "interaction/interaction_adapter.hpp"
 #include <queue>
 #include <set>
 #include <algorithm>
@@ -88,78 +89,27 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 	}
 
 	std::string destinationTerritory;
-	if (ctx.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("=== FREMEN WORM RIDING ===");
-			ctx.logger->logDebug("Choose destination territory for " + std::to_string(fremenUnitsHere) + " units");
-			ctx.logger->logDebug("Valid territories (not in storm):");
-		}
-		
-		// Build list of valid destination territories (only restriction: not in storm)
+	{
 		std::vector<std::string> validDests;
 		const auto& allTerritories = ctx.map.getTerritories();
 		for (const auto& terr : allTerritories) {
 			if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) continue;
 			if (!ctx.map.canAddFactionToTerritory(terr.name, fremenIndex)) continue;
-			
 			validDests.push_back(terr.name);
 		}
-		
-		// Show options
-		if (ctx.logger) {
-			for (size_t i = 0; i < validDests.size(); ++i) {
-				ctx.logger->logDebug(std::to_string(i) + ". " + validDests[i]);
+
+		if (ctx.adapter && !validDests.empty()) {
+			DecisionRequest req;
+			req.kind = "select";
+			req.actor_index = fremenIndex;
+			req.prompt = "=== FREMEN WORM RIDING === Choose destination for " +
+				std::to_string(fremenUnitsHere) + " units:";
+			req.options = validDests;
+			auto resp = ctx.adapter->requestDecision(req);
+			if (resp && resp->valid && !resp->payload_json.empty()) {
+				destinationTerritory = resp->payload_json;
 			}
-		}
-		
-		// Get player choice
-		bool validChoice = false;
-		while (!validChoice) {
-			if (ctx.logger) {
-				ctx.logger->logDebug("Enter territory number or name:");
-			}
-			std::cout << "> ";
-			std::getline(std::cin, destinationTerritory);
-			
-			// Check if it's a number
-			try {
-				size_t idx = std::stoi(destinationTerritory);
-				if (idx < validDests.size()) {
-					destinationTerritory = validDests[idx];
-					validChoice = true;
-				} else {
-					if (ctx.logger) {
-						ctx.logger->logDebug("[ERROR] Invalid index. Try again.");
-					}
-				}
-			} catch (...) {
-				// Not a number, treat as territory name
-				for (const auto& validDest : validDests) {
-					if (validDest == destinationTerritory) {
-						validChoice = true;
-						break;
-					}
-				}
-				
-				if (!validChoice) {
-					if (ctx.logger) {
-						ctx.logger->logDebug("[ERROR] Territory not in valid list. Try again.");
-					}
-				}
-			}
-		}
-	} else {
-		// AI: choose first valid territory
-		std::vector<std::string> validDests;
-		const auto& allTerritories = ctx.map.getTerritories();
-		for (const auto& terr : allTerritories) {
-			if (!GameMap::canEnterTerritory(&terr, ctx.stormSector)) continue;
-			if (!ctx.map.canAddFactionToTerritory(terr.name, fremenIndex)) continue;
-			
-			validDests.push_back(terr.name);
-		}
-		
-		if (!validDests.empty()) {
+		} else if (!validDests.empty()) {
 			destinationTerritory = validDests[0];
 		}
 	}
@@ -268,90 +218,78 @@ void FremenAbility::placeStartingForces(PhaseContext& ctx) {
 		ctx.logger->logDebug("  3. False Wall West");
 	}
 	
-	// Check if interactive mode
-	if (!ctx.interactiveMode) {
-		// AI mode: distribute units evenly with slight preference for Sietch Tabr
-		distribution[0] = 4;  // Sietch Tabr (central stronghold)
-		distribution[1] = 3;  // False Wall South
-		distribution[2] = 3;  // False Wall West
-		
-		if (ctx.logger) {
-			ctx.logger->logDebug("[AI] Fremen AI chosen distribution:");
-			ctx.logger->logDebug("  Sietch Tabr: " + std::to_string(distribution[0]) + " units");
-			ctx.logger->logDebug("  False Wall South: " + std::to_string(distribution[1]) + " units");
-			ctx.logger->logDebug("  False Wall West: " + std::to_string(distribution[2]) + " units");
-		}
-	} else {
-		// Interactive mode: ask player for each territory distribution one by one with elite split
+	if (ctx.adapter) {
+		// Interactive mode via adapter: ask player for each territory one by one
 		if (ctx.logger) {
 			ctx.logger->logDebug("PLAYER INPUT REQUIRED:");
 			ctx.logger->logDebug("Distribute starting units across each sietch, specifying normal and elite units.");
 		}
-		
+
 		int eliteRemaining = fremen->getEliteUnitsReserve();
-		
+
 		for (int i = 0; i < 3; ++i) {
 			int remaining = totalToAllocate;
-			for (int j = 0; j < i; ++j) {
-				remaining -= distribution[j];
-			}
-			
-			std::cout << "\n  Deploying to " << territories[i] << std::endl;
-			std::cout << "  Units remaining: " << remaining << std::endl;
-			
-			// Ask how many total units for this territory
-			std::cout << "  How many units to deploy here? (0-" << remaining << "): ";
+			for (int j = 0; j < i; ++j) remaining -= distribution[j];
+
+			DecisionRequest tReq;
+			tReq.kind = "int";
+			tReq.actor_index = fremenIndex;
+			tReq.prompt = "Deploying to " + territories[i] + " (remaining: " +
+				std::to_string(remaining) + "). How many units to deploy here?";
+			tReq.int_min = 0;
+			tReq.int_max = remaining;
 			int unitsForTerritory = 0;
-			std::string input;
-			std::cin >> input;
-			
-			try {
-				unitsForTerritory = std::stoi(input);
-				unitsForTerritory = std::max(0, std::min(unitsForTerritory, remaining));
-			} catch (...) {
-				unitsForTerritory = 0;
+			auto tResp = ctx.adapter->requestDecision(tReq);
+			if (tResp && tResp->valid) {
+				try { unitsForTerritory = std::stoi(tResp->payload_json); } catch (...) {}
 			}
-			
 			distribution[i] = unitsForTerritory;
-			
-			// Ask how many elite among these units
+
 			int eliteForTerritory = 0;
 			if (unitsForTerritory > 0 && eliteRemaining > 0) {
-				int maxEliteHere = std::min(unitsForTerritory, eliteRemaining);
-				std::cout << "  How many elite (Fedaykin) among these " << unitsForTerritory << "? (0-" << maxEliteHere << "): ";
-				std::cin >> input;
-				
-				try {
-					eliteForTerritory = std::stoi(input);
-					eliteForTerritory = std::max(0, std::min(eliteForTerritory, maxEliteHere));
-				} catch (...) {
-					eliteForTerritory = 0;
+				int maxElite = std::min(unitsForTerritory, eliteRemaining);
+				DecisionRequest eReq;
+				eReq.kind = "int";
+				eReq.actor_index = fremenIndex;
+				eReq.prompt = "How many elite (Fedaykin) among these " + std::to_string(unitsForTerritory) + "?";
+				eReq.int_min = 0;
+				eReq.int_max = maxElite;
+				auto eResp = ctx.adapter->requestDecision(eReq);
+				if (eResp && eResp->valid) {
+					try { eliteForTerritory = std::stoi(eResp->payload_json); } catch (...) {}
 				}
-				
-				// Track elite allocation locally
 				eliteRemaining -= eliteForTerritory;
 			}
-			
+
 			if (ctx.logger) {
-				ctx.logger->logDebug("  " + territories[i] + ": " + std::to_string(unitsForTerritory) + 
+				ctx.logger->logDebug("  " + territories[i] + ": " + std::to_string(unitsForTerritory) +
 					" units (" + std::to_string(unitsForTerritory - eliteForTerritory) + " normal, " +
 					std::to_string(eliteForTerritory) + " elite)");
 			}
-			
-			// Deploy immediately to map with elite split
+
 			if (unitsForTerritory > 0) {
 				int normalUnits = unitsForTerritory - eliteForTerritory;
 				ctx.map.addUnitsToTerritory(territories[i], fremenIndex, normalUnits, eliteForTerritory, -1);
 				fremen->deployUnits(unitsForTerritory);
 			}
 		}
-		
-		// Set elite reserve to what's left undeployed
 		fremen->setEliteUnitsReserve(eliteRemaining);
+	} else {
+		// AI mode: distribute units evenly with slight preference for Sietch Tabr
+		distribution[0] = 4;
+		distribution[1] = 3;
+		distribution[2] = 3;
+
+		if (ctx.logger) {
+			ctx.logger->logDebug("[AI] Fremen AI chosen distribution:");
+			ctx.logger->logDebug("  Sietch Tabr: " + std::to_string(distribution[0]) + " units");
+			ctx.logger->logDebug("  False Wall South: " + std::to_string(distribution[1]) + " units");
+			ctx.logger->logDebug("  False Wall West: " + std::to_string(distribution[2]) + " units");
+		}
 	}
-	
+
 	// Deploy units for AI mode (interactive already deployed in loop above)
-	if (!ctx.interactiveMode) {
+	if (!ctx.adapter) {
 		// AI: distribute special units only in advanced faction mode.
 		int eliteDistribution[3] = {0, 0, 0};
 		if (useAdvancedFactionRules) {

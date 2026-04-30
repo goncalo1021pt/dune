@@ -7,6 +7,7 @@
 #include <algorithm>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "interaction/interaction_adapter.hpp"
 #include <iostream>
 
 void BiddingPhase::execute(PhaseContext& ctx) {
@@ -257,59 +258,35 @@ bool BiddingPhase::askPlayerToBid(PhaseContext& ctx, int playerIndex, int curren
 	auto view = ctx.getBiddingView();
 	Player* player = view.players[playerIndex];
 
-	if (view.interactiveMode) {
-		// Interactive mode: prompt player for input
-		std::string prompt = player->getFactionName() + "'s turn to bid (current bid: " + 
-			std::to_string(currentBid) + " spice). Your spice: " + std::to_string(player->getSpice());
-		if (ctx.logger) {
-			ctx.logger->logDebug(prompt);
-			ctx.logger->logDebug("Enter bid amount (0 to pass): ");
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "int";
+		req.actor_index = playerIndex;
+		req.prompt = player->getFactionName() + "'s bid (current: " +
+			std::to_string(currentBid) + ", your spice: " +
+			std::to_string(player->getSpice()) + "). Enter amount (0 to pass): ";
+		req.int_min = 0;
+		req.int_max = player->getSpice();
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid) return false;
+
+		int bid = 0;
+		try { bid = std::stoi(resp->payload_json); } catch (...) {}
+
+		if (bid == 0) {
+			if (ctx.logger) ctx.logger->logDebug(player->getFactionName() + " passes.");
+			return false;
 		}
-		
-		int bid = -1;
-		while (bid < 0) {
-			std::cin >> bid;
-			
-			if (std::cin.fail()) {
-				std::cin.clear();
-				std::cin.ignore(10000, '\n');
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid input. Enter a number or 0 to pass: ");
-				}
-				bid = -1;
-				continue;
-			}
-			
-			if (bid == 0) {
-				if (ctx.logger) {
-					ctx.logger->logDebug(player->getFactionName() + " passes.");
-				}
-				return false; // Pass
-			}
-			
-			if (bid <= currentBid) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("Bid must be higher than current bid (" + std::to_string(currentBid) + "). Try again: ");
-				}
-				bid = -1;
-				continue;
-			}
-			
-			if (bid > player->getSpice()) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("Bid (" + std::to_string(bid) + ") exceeds your spice (" + 
-						std::to_string(player->getSpice()) + "). Try again: ");
-				}
-				bid = -1;
-				continue;
-			}
+		if (bid <= currentBid || bid > player->getSpice()) {
+			// adapter validated range 0..spice; re-request would loop — treat as pass
+			if (ctx.logger) ctx.logger->logDebug(player->getFactionName() + " passes (invalid bid).");
+			return false;
 		}
-		
 		if (ctx.logger) {
 			ctx.logger->logDebug(player->getFactionName() + " bids " + std::to_string(bid) + " spice.");
 		}
 		newBid = bid;
-		return true; // Raise
+		return true;
 	} else {
 		// AI decision
 		return aiDecideToBid(ctx, playerIndex, currentBid, newBid);

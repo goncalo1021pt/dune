@@ -13,6 +13,7 @@ class TraitorDeck;
 class SpiceDeck;
 class EventLogger;
 class FactionAbility;
+class IInteractionAdapter;
 enum class gamePhase : int;
 
 /**
@@ -55,7 +56,12 @@ struct PhaseContext {
 
 	// Testing/Debug
 	bool interactiveMode;
-	
+
+	// Interaction adapter: replaces direct std::cin reads in phase code.
+	// Set to a TtyAdapter when interactiveMode=true; nullptr for AI/non-interactive runs.
+	// Will become mandatory (non-null) in PR 4 once all phases are fully migrated.
+	IInteractionAdapter* adapter;
+
 	// Event logging
 	EventLogger* logger;
 
@@ -216,6 +222,7 @@ struct PhaseContext {
 		std::mt19937& rng_,
 		bool interactiveMode_ = false,
 		EventLogger* logger_ = nullptr,
+		IInteractionAdapter* adapter_ = nullptr,
 		const GameFeatureSettings& featureSettings_ = defaultFeatureSettings()
 	)
 		: turnNumber(turnNumber_), currentPhase(currentPhase_),
@@ -228,5 +235,5 @@ struct PhaseContext {
 		  traitorDeck(traitorDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), featureSettings(featureSettings_), rng(rng_),
-		  interactiveMode(interactiveMode_), logger(logger_), gameEnded(false) {}
+		  interactiveMode(interactiveMode_), adapter(adapter_), logger(logger_), gameEnded(false) {}
 };

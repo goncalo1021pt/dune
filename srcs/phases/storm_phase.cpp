@@ -2,6 +2,7 @@
 #include "factions/faction_ability.hpp"
 #include "map.hpp"
 #include "player.hpp"
+#include "interaction/interaction_adapter.hpp"
 #include <algorithm>
 #include <set>
 #include "events/event.hpp"
@@ -208,27 +209,15 @@ void StormPhase::execute(PhaseContext& ctx) {
 				continue;
 			}
 
-			bool play = !ctx.interactiveMode;
-			if (ctx.interactiveMode && ctx.logger) {
-				ctx.logger->logDebug(ctx.players[idx]->getFactionName() +
-					", play Weather Control to set storm movement (0-10)? (y/n): ");
-			}
-			if (ctx.interactiveMode) {
-				while (true) {
-					std::string input;
-					std::getline(std::cin >> std::ws, input);
-					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
-						play = true;
-						break;
-					}
-					if (input == "n" || input == "N" || input == "no" || input == "No") {
-						play = false;
-						break;
-					}
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid input. Enter y or n: ");
-					}
-				}
+			bool play = false;
+			if (ctx.adapter) {
+				DecisionRequest req;
+				req.kind = "yn";
+				req.actor_index = idx;
+				req.prompt = ctx.players[idx]->getFactionName() +
+					", play Weather Control to set storm movement (0-10)?";
+				auto resp = ctx.adapter->requestDecision(req);
+				play = resp && resp->valid && resp->payload_json == "y";
 			}
 
 			if (!play) {
@@ -236,24 +225,16 @@ void StormPhase::execute(PhaseContext& ctx) {
 			}
 
 			int chosenMove = view.lastStormCard;
-			if (ctx.interactiveMode && ctx.logger) {
-				ctx.logger->logDebug("Enter storm movement sectors (0-10): ");
-			}
-			if (ctx.interactiveMode) {
-				while (true) {
-					std::string input;
-					std::getline(std::cin >> std::ws, input);
-					try {
-						int value = std::stoi(input);
-						if (value >= 0 && value <= 10) {
-							chosenMove = value;
-							break;
-						}
-					} catch (...) {
-					}
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid value. Enter 0-10: ");
-					}
+			if (ctx.adapter) {
+				DecisionRequest req;
+				req.kind = "int";
+				req.actor_index = idx;
+				req.prompt = "Enter storm movement sectors (0-10): ";
+				req.int_min = 0;
+				req.int_max = 10;
+				auto resp = ctx.adapter->requestDecision(req);
+				if (resp && resp->valid) {
+					try { chosenMove = std::stoi(resp->payload_json); } catch (...) {}
 				}
 			} else {
 				std::uniform_int_distribution<> dist(0, 10);
