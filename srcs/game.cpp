@@ -231,7 +231,8 @@ void Game::initializeGame() {
 	PhaseContext tempCtx(turnNumber, currentPhase, players, playerCount, _map,
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard, stormDeck,
 		spiceDeck, treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng,
-		interactiveMode, eventLogger.get(), interactionAdapter.get(), featureSettings);
+		interactiveMode, eventLogger.get(), interactionAdapter.get(),
+		&reactionEngine, featureSettings);
 	for (int i = 0; i < playerCount; ++i) {
 		if (players[i]->getFactionAbility()) {
 			players[i]->getFactionAbility()->placeStartingForces(tempCtx);
@@ -358,7 +359,7 @@ void Game::processPhase() {
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, spiceDeck,
 		treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
-		eventLogger.get(), interactionAdapter.get(), featureSettings
+		eventLogger.get(), interactionAdapter.get(), &reactionEngine, featureSettings
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {
@@ -366,7 +367,12 @@ void Game::processPhase() {
 	} else if (eventLogger) {
 		eventLogger->logDebug(getPhaseName(currentPhase) + " Phase (TODO)");
 	}
-	
+
+	// AnytimeSafe checkpoint: end-of-phase boundary. Tleilaxu Ghola and
+	// other "play at any time" cards can fire here. The engine is a no-op
+	// when no player holds such a card.
+	reactionEngine.dispatchAnytimeSafe(ctx, "end of " + getPhaseName(currentPhase));
+
 	// Capture gameEnded flag from phase context
 	gameEnded = ctx.gameEnded;
 	
@@ -427,7 +433,7 @@ void Game::runGame() {
 			stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 			stormDeck, spiceDeck,
 			treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
-			eventLogger.get(), interactionAdapter.get(), featureSettings
+			eventLogger.get(), interactionAdapter.get(), &reactionEngine, featureSettings
 		);
 
 		for (int i = 0; i < playerCount; ++i) {

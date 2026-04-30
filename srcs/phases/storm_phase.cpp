@@ -3,19 +3,11 @@
 #include "map.hpp"
 #include "player.hpp"
 #include "interaction/interaction_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 #include <algorithm>
 #include <set>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
-
-namespace {
-
-bool hasCard(const Player* player, const std::string& cardName) {
-	const auto& cards = player->getTreacheryCards();
-	return std::find(cards.begin(), cards.end(), cardName) != cards.end();
-}
-
-} // namespace
 
 void StormPhase::initializeStormDeck(std::vector<int>& stormDeck, std::mt19937& rng) {
 	stormDeck = {1, 2, 3, 4, 5, 6};
@@ -203,49 +195,9 @@ void StormPhase::execute(PhaseContext& ctx) {
 	view.hasNextStormCard = false;
 
 	int weatherController = -1;
-	if (view.turnNumber > 1) {
-		for (int idx : ctx.turnOrder) {
-			if (!hasCard(ctx.players[idx], "Weather Control")) {
-				continue;
-			}
-
-			bool play = false;
-			if (ctx.adapter) {
-				DecisionRequest req;
-				req.kind = "yn";
-				req.actor_index = idx;
-				req.prompt = ctx.players[idx]->getFactionName() +
-					", play Weather Control to set storm movement (0-10)?";
-				auto resp = ctx.adapter->requestDecision(req);
-				play = resp && resp->valid && resp->payload_json == "y";
-			}
-
-			if (!play) {
-				continue;
-			}
-
-			int chosenMove = view.lastStormCard;
-			if (ctx.adapter) {
-				DecisionRequest req;
-				req.kind = "int";
-				req.actor_index = idx;
-				req.prompt = "Enter storm movement sectors (0-10): ";
-				req.int_min = 0;
-				req.int_max = 10;
-				auto resp = ctx.adapter->requestDecision(req);
-				if (resp && resp->valid) {
-					try { chosenMove = std::stoi(resp->payload_json); } catch (...) {}
-				}
-			} else {
-				std::uniform_int_distribution<> dist(0, 10);
-				chosenMove = dist(view.rng);
-			}
-
-			ctx.players[idx]->removeTreacheryCard("Weather Control");
-			view.lastStormCard = chosenMove;
-			weatherController = idx;
-			break;
-		}
+	if (view.turnNumber > 1 && ctx.reactions) {
+		view.lastStormCard = ctx.reactions->dispatchBeforeStormMove(
+			ctx, view.lastStormCard, weatherController);
 	}
 
 	moveStorm(view.lastStormCard, view.stormSector);
