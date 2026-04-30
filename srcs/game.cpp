@@ -2,6 +2,7 @@
 #include "leader.hpp"
 #include "logger/console_event_logger.hpp"
 #include "logger/bus_bridge_logger.hpp"
+#include "interaction/tty_adapter.hpp"
 #include "phases/phase_context.hpp"
 #include "phases/storm_phase.hpp"
 #include "phases/spice_blow_phase.hpp"
@@ -47,6 +48,9 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive, GameFeatureSetti
 		  std::make_unique<ConsoleEventLogger>(), eventBus)),
 	  gameEnded(false),
 	  featureSettings(featureSettings) {
+	if (interactive) {
+		interactionAdapter = std::make_unique<TtyAdapter>();
+	}
 	
 	if (playerCount < MIN_PLAYERS || playerCount > MAX_PLAYERS) {
 		throw std::invalid_argument("Number of players must be between " + 
@@ -226,8 +230,8 @@ void Game::initializeGame() {
 	// Place starting forces for factions with custom deployments
 	PhaseContext tempCtx(turnNumber, currentPhase, players, playerCount, _map,
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard, stormDeck,
-		spiceDeck, treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, 
-		interactiveMode, eventLogger.get(), featureSettings);
+		spiceDeck, treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng,
+		interactiveMode, eventLogger.get(), interactionAdapter.get(), featureSettings);
 	for (int i = 0; i < playerCount; ++i) {
 		if (players[i]->getFactionAbility()) {
 			players[i]->getFactionAbility()->placeStartingForces(tempCtx);
@@ -354,7 +358,7 @@ void Game::processPhase() {
 		stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 		stormDeck, spiceDeck,
 		treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
-		eventLogger.get(), featureSettings
+		eventLogger.get(), interactionAdapter.get(), featureSettings
 	);
 
 	if (phases[static_cast<int>(currentPhase)]) {
@@ -423,7 +427,7 @@ void Game::runGame() {
 			stormSector, lastStormCard, nextStormCard, hasNextStormCard,
 			stormDeck, spiceDeck,
 			treacheryDeck, traitorDeck, turnOrder, beneGesseritCharity, rng, interactiveMode,
-			eventLogger.get(), featureSettings
+			eventLogger.get(), interactionAdapter.get(), featureSettings
 		);
 
 		for (int i = 0; i < playerCount; ++i) {

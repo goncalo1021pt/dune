@@ -15,6 +15,7 @@
 #include "phases/phase.hpp"
 #include "phases/ship_and_move_phase.hpp"
 #include "events/game_event_bus.hpp"
+#include "interaction/tty_adapter.hpp"
 
 // Forward declarations
 class EventLogger;
@@ -101,6 +102,10 @@ class Game {
 		std::vector<std::unique_ptr<Phase>> phases;
 
 		bool interactiveMode;
+
+		// Interaction adapter: non-null when interactiveMode=true.
+		// Stored as unique_ptr so the phase context can hold a raw non-owning pointer.
+		std::unique_ptr<IInteractionAdapter> interactionAdapter;
 
 		// Event bus: canonical event log + pub/sub for engine systems.
 		// Constructed before eventLogger (BusBridgeLogger holds a reference to it).

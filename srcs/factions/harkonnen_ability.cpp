@@ -5,6 +5,7 @@
 #include "map.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "interaction/interaction_adapter.hpp"
 #include <algorithm>
 #include <iostream>
 
@@ -116,33 +117,24 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 	}
 
 	int captureIdx = 0;
-	if (ctx.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Harkonnen] Choose leader to capture from " + opponent->getFactionName() + ":");
-			for (int i = 0; i < static_cast<int>(opponentLeaders.size()); ++i) {
-				ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + opponentLeaders[i].name +
-					" (power:" + std::to_string(opponentLeaders[i].power) + ")");
-			}
-			ctx.logger->logDebug("Choose (1-" + std::to_string(opponentLeaders.size()) + "): ");
+	if (ctx.adapter) {
+		std::vector<std::string> options;
+		for (const auto& leader : opponentLeaders) {
+			options.push_back(leader.name + " (power:" + std::to_string(leader.power) + ")");
 		}
-
-		while (true) {
-			std::string input;
-			std::getline(std::cin >> std::ws, input);
-			try {
-				int pick = std::stoi(input);
-				if (pick >= 1 && pick <= static_cast<int>(opponentLeaders.size())) {
-					captureIdx = pick - 1;
-					break;
-				}
-			} catch (...) {
-			}
-			if (ctx.logger) {
-				ctx.logger->logDebug("Invalid choice. Try again: ");
+		DecisionRequest req;
+		req.kind = "select";
+		req.actor_index = harkonnenIndex;
+		req.prompt = "[Harkonnen] Choose leader to capture from " + opponent->getFactionName() + ":";
+		req.options = options;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid) {
+			for (int i = 0; i < static_cast<int>(options.size()); ++i) {
+				if (options[i] == resp->payload_json) { captureIdx = i; break; }
 			}
 		}
 	} else {
-		// AI fallback: capture highest-power leader.
+		// AI: capture highest-power leader.
 		for (int i = 1; i < static_cast<int>(opponentLeaders.size()); ++i) {
 			if (opponentLeaders[i].power > opponentLeaders[captureIdx].power) {
 				captureIdx = i;
@@ -169,13 +161,13 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 
 	// Immediately after capture, Harkonnen may execute the captured leader for 2 spice.
 	bool executeCapturedLeader = false;
-	if (ctx.interactiveMode) {
-		if (ctx.logger) {
-			ctx.logger->logDebug("[Harkonnen] Execute captured leader " + captured.name + " for 2 spice? (y/n): ");
-		}
-		std::string input;
-		std::getline(std::cin >> std::ws, input);
-		executeCapturedLeader = (input == "y" || input == "Y" || input == "yes" || input == "Yes");
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "yn";
+		req.actor_index = harkonnenIndex;
+		req.prompt = "[Harkonnen] Execute captured leader " + captured.name + " for 2 spice?";
+		auto resp = ctx.adapter->requestDecision(req);
+		executeCapturedLeader = resp && resp->valid && resp->payload_json == "y";
 	}
 
 	if (executeCapturedLeader) {

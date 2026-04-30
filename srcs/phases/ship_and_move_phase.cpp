@@ -11,6 +11,7 @@
 #include "factions/bene_gesserit_ability.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "interaction/interaction_adapter.hpp"
 
 namespace {
 
@@ -27,6 +28,16 @@ struct GuildSourceSelection {
 };
 
 bool readIntInRange(PhaseContext& ctx, int minValue, int maxValue, int& outValue) {
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "int";
+		req.int_min = minValue;
+		req.int_max = maxValue;
+		req.prompt = "Enter value (" + std::to_string(minValue) + "-" + std::to_string(maxValue) + "): ";
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid) return false;
+		try { outValue = std::stoi(resp->payload_json); return true; } catch (...) { return false; }
+	}
 	while (true) {
 		std::string input;
 		std::getline(std::cin >> std::ws, input);
@@ -45,13 +56,25 @@ bool readIntInRange(PhaseContext& ctx, int minValue, int maxValue, int& outValue
 }
 
 int promptMenuChoice(PhaseContext& ctx, const std::string& title, const std::vector<std::string>& options) {
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "select";
+		req.prompt = title;
+		req.options = options;
+		req.allow_none = true;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid || resp->payload_json.empty()) return -1;
+		for (size_t i = 0; i < options.size(); ++i) {
+			if (options[i] == resp->payload_json) return static_cast<int>(i);
+		}
+		return -1;
+	}
 	if (ctx.logger) {
 		ctx.logger->logDebug(title);
 		for (size_t i = 0; i < options.size(); ++i) {
 			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + options[i]);
 		}
 	}
-
 	int choice = -1;
 	if (!readIntInRange(ctx, 0, static_cast<int>(options.size()), choice)) {
 		return -1;
@@ -60,6 +83,23 @@ int promptMenuChoice(PhaseContext& ctx, const std::string& title, const std::vec
 		return -1;
 	}
 	return choice - 1;
+}
+
+std::string jsonExtractString(const std::string& json, const std::string& key) {
+	const std::string search = "\"" + key + "\":\"";
+	auto pos = json.find(search);
+	if (pos == std::string::npos) return "";
+	pos += search.size();
+	auto end = json.find('"', pos);
+	return (end != std::string::npos) ? json.substr(pos, end - pos) : "";
+}
+
+int jsonExtractInt(const std::string& json, const std::string& key) {
+	const std::string search = "\"" + key + "\":";
+	auto pos = json.find(search);
+	if (pos == std::string::npos) return -1;
+	pos += search.size();
+	try { return std::stoi(json.substr(pos)); } catch (...) { return -1; }
 }
 
 bool selectGuildSource(PhaseContext& ctx, int factionIndex, const std::string& failPrefix, GuildSourceSelection& outSel) {
@@ -200,25 +240,14 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 			if (advisors <= 0) continue;
 
 			bool doFlip = false;
-			if (view.interactiveMode) {
-				if (ctx.logger) {
-					ctx.logger->logDebug("[Bene Gesserit] Declare battle from advisors in " + terr.name +
-						" and flip to fighters? (y/n): ");
-				}
-				while (true) {
-					std::string input;
-					std::getline(std::cin >> std::ws, input);
-					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
-						doFlip = true;
-						break;
-					}
-					if (input == "n" || input == "N" || input == "no" || input == "No") {
-						break;
-					}
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid input. Enter y or n: ");
-					}
-				}
+			if (ctx.adapter) {
+				DecisionRequest req;
+				req.kind = "yn";
+				req.actor_index = beneIndex;
+				req.prompt = "[Bene Gesserit] Declare battle from advisors in " + terr.name +
+					" and flip to fighters?";
+				auto resp = ctx.adapter->requestDecision(req);
+				doFlip = resp && resp->valid && resp->payload_json == "y";
 			} else {
 				doFlip = (view.map.countCombatFactionsInTerritory(terr.name) > 0);
 			}
@@ -312,7 +341,7 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	std::vector<int> nonGuildOrder = view.turnOrder;
 	nonGuildOrder.erase(std::remove(nonGuildOrder.begin(), nonGuildOrder.end(), guildIndex), nonGuildOrder.end());
 
-	if (!view.interactiveMode) {
+	if (!ctx.adapter) {
 		runShipmentStep(nonGuildOrder);
 		executeShipmentForPlayer(guildIndex);
 		executeMovementForPlayer(guildIndex);
@@ -324,11 +353,13 @@ void ShipAndMovePhase::execute(PhaseContext& ctx) {
 	bool guildShipmentTaken = false;
 	bool guildMovementTaken = false;
 
-	auto askYesNo = [&](const std::string& prompt) {
-		std::string answer;
-		std::cout << prompt;
-		std::cin >> answer;
-		return (answer == "y" || answer == "Y" || answer == "yes" || answer == "Yes");
+	auto askYesNo = [&](const std::string& prompt) -> bool {
+		DecisionRequest req;
+		req.kind = "yn";
+		req.actor_index = guildIndex;
+		req.prompt = prompt;
+		auto resp = ctx.adapter->requestDecision(req);
+		return resp && resp->valid && resp->payload_json == "y";
 	};
 
 	auto offerGuildInterrupt = [&](const std::string& whenLabel) {
@@ -380,7 +411,7 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	FactionAbility* ability = player->getFactionAbility();
 	bool isGuild = ability && ability->canCrossShip() && ability->canShipToReserves();
 
-	if (isGuild && view.interactiveMode) {
+	if (isGuild && ctx.adapter) {
 		if (ctx.logger) {
 			ctx.logger->logDebug("Shipment type:");
 			ctx.logger->logDebug("  0. Skip");
@@ -413,15 +444,22 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	std::vector<std::string> validTargets = getValidDeploymentTargets(ctx, player->getFactionIndex());
 	
 	DeploymentDecision decision;
-	
-	if (view.interactiveMode) {
-		auto choice = InteractiveInput::getDeploymentDecision(ctx, player, validTargets);
-		decision.territoryName = choice.territoryName;
-		decision.normalUnits   = choice.normalUnits;
-		decision.eliteUnits    = choice.eliteUnits;
-		decision.shouldDeploy  = choice.shouldDeploy;
-		decision.sector        = choice.sector;  // Use player's sector choice
-		decision.spiceCost     = 0;
+
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "deployment";
+		req.actor_index = player->getFactionIndex();
+		req.options = validTargets;
+		req.migration_ctx = &ctx;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid && resp->payload_json.find("\"skip\":true") == std::string::npos) {
+			decision.territoryName = jsonExtractString(resp->payload_json, "territory");
+			decision.normalUnits   = jsonExtractInt(resp->payload_json, "normal");
+			decision.eliteUnits    = jsonExtractInt(resp->payload_json, "elite");
+			decision.sector        = jsonExtractInt(resp->payload_json, "sector");
+			decision.shouldDeploy  = !decision.territoryName.empty();
+			decision.spiceCost     = 0;
+		}
 	} else {
 		decision = aiDecideDeployment(ctx, player);
 	}
@@ -662,27 +700,15 @@ bool ShipAndMovePhase::deployUnits(PhaseContext& ctx, Player* player,
 			if (!bg) continue;
 			if (static_cast<int>(i) == player->getFactionIndex()) continue;
 			if (view.map.getCombatUnitsInTerritory(territoryName, static_cast<int>(i)) <= 0) continue;
-			if (ctx.logger) {
-				ctx.logger->logDebug("[Bene Gesserit] Intrusion in " + territoryName +
-					": flip fighters to advisors? (y/n): ");
-			}
-			bool flip = !view.interactiveMode;
-			if (view.interactiveMode) {
-				while (true) {
-					std::string input;
-					std::getline(std::cin >> std::ws, input);
-					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
-						flip = true;
-						break;
-					}
-					if (input == "n" || input == "N" || input == "no" || input == "No") {
-						flip = false;
-						break;
-					}
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid input. Enter y or n: ");
-					}
-				}
+			bool flip = true; // AI default: always flip
+			if (ctx.adapter) {
+				DecisionRequest req;
+				req.kind = "yn";
+				req.actor_index = static_cast<int>(i);
+				req.prompt = "[Bene Gesserit] Intrusion in " + territoryName +
+					": flip fighters to advisors?";
+				auto resp = ctx.adapter->requestDecision(req);
+				flip = resp && resp->valid && resp->payload_json == "y";
 			}
 			if (flip) {
 				bg->flipFightersToAdvisors(ctx, territoryName);
@@ -748,15 +774,23 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	
 	MovementDecision decision;
 	
-	if (view.interactiveMode) {
-		auto choice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
-		decision.fromTerritory = choice.fromTerritory;
-		decision.toTerritory   = choice.toTerritory;
-		decision.normalUnits   = choice.normalUnits;
-		decision.eliteUnits    = choice.eliteUnits;
-		decision.shouldMove    = choice.shouldMove;
-		decision.fromSector    = choice.fromSector;  // Use player's sector choice
-		decision.toSector      = choice.toSector;    // Use player's sector choice
+	if (ctx.adapter) {
+		DecisionRequest req;
+		req.kind = "movement";
+		req.actor_index = player->getFactionIndex();
+		req.options = territoriesWithUnits;
+		req.int_max = movementRange;
+		req.migration_ctx = &ctx;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid && resp->payload_json.find("\"skip\":true") == std::string::npos) {
+			decision.fromTerritory = jsonExtractString(resp->payload_json, "from");
+			decision.toTerritory   = jsonExtractString(resp->payload_json, "to");
+			decision.normalUnits   = jsonExtractInt(resp->payload_json, "normal");
+			decision.eliteUnits    = jsonExtractInt(resp->payload_json, "elite");
+			decision.fromSector    = jsonExtractInt(resp->payload_json, "from_sector");
+			decision.toSector      = jsonExtractInt(resp->payload_json, "to_sector");
+			decision.shouldMove    = !decision.fromTerritory.empty() && !decision.toTerritory.empty();
+		}
 	} else {
 		decision = aiDecideMovement(ctx, player, movementRange);
 	}
@@ -801,27 +835,14 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 	}
 
 	if (hasCard(player, "Hajr")) {
-		bool playHajr = !view.interactiveMode;
-		if (view.interactiveMode) {
-			if (ctx.logger) {
-				ctx.logger->logDebug(player->getFactionName() +
-					", play Hajr for a second movement this phase? (y/n): ");
-			}
-			while (true) {
-				std::string input;
-				std::getline(std::cin >> std::ws, input);
-				if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
-					playHajr = true;
-					break;
-				}
-				if (input == "n" || input == "N" || input == "no" || input == "No") {
-					playHajr = false;
-					break;
-				}
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid input. Enter y or n: ");
-				}
-			}
+		bool playHajr = true; // AI default: always play
+		if (ctx.adapter) {
+			DecisionRequest req;
+			req.kind = "yn";
+			req.actor_index = player->getFactionIndex();
+			req.prompt = player->getFactionName() + ", play Hajr for a second movement this phase?";
+			auto resp = ctx.adapter->requestDecision(req);
+			playHajr = resp && resp->valid && resp->payload_json == "y";
 		}
 
 		if (playHajr) {
@@ -832,17 +853,25 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 			}
 
 			MovementDecision extraDecision;
-			if (view.interactiveMode) {
-				std::vector<std::string> territoriesWithUnits =
+			if (ctx.adapter) {
+				std::vector<std::string> extraTerritories =
 					view.map.getTerritoriesWithUnits(player->getFactionIndex());
-				auto choice = InteractiveInput::getMovementDecision(ctx, player, territoriesWithUnits, movementRange);
-				extraDecision.fromTerritory = choice.fromTerritory;
-				extraDecision.toTerritory   = choice.toTerritory;
-				extraDecision.normalUnits   = choice.normalUnits;
-				extraDecision.eliteUnits    = choice.eliteUnits;
-				extraDecision.shouldMove    = choice.shouldMove;
-				extraDecision.fromSector    = choice.fromSector;
-				extraDecision.toSector      = choice.toSector;
+				DecisionRequest req;
+				req.kind = "movement";
+				req.actor_index = player->getFactionIndex();
+				req.options = extraTerritories;
+				req.int_max = movementRange;
+				req.migration_ctx = &ctx;
+				auto resp = ctx.adapter->requestDecision(req);
+				if (resp && resp->valid && resp->payload_json.find("\"skip\":true") == std::string::npos) {
+					extraDecision.fromTerritory = jsonExtractString(resp->payload_json, "from");
+					extraDecision.toTerritory   = jsonExtractString(resp->payload_json, "to");
+					extraDecision.normalUnits   = jsonExtractInt(resp->payload_json, "normal");
+					extraDecision.eliteUnits    = jsonExtractInt(resp->payload_json, "elite");
+					extraDecision.fromSector    = jsonExtractInt(resp->payload_json, "from_sector");
+					extraDecision.toSector      = jsonExtractInt(resp->payload_json, "to_sector");
+					extraDecision.shouldMove    = !extraDecision.fromTerritory.empty() && !extraDecision.toTerritory.empty();
+				}
 			} else {
 				extraDecision = aiDecideMovement(ctx, player, movementRange);
 			}
@@ -1032,26 +1061,14 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 
 	if (movingAsAdvisor) {
 		bool destinationHasCombat = (view.map.countCombatFactionsInTerritory(toTerritory) > 0);
-		bool keepAdvisor = destinationHasCombat;
-		if (destinationHasCombat && view.interactiveMode) {
-			if (ctx.logger) {
-				ctx.logger->logDebug("[Bene Gesserit] Keep moved units as advisors in " + toTerritory + "? (y/n): ");
-			}
-			while (true) {
-				std::string input;
-				std::getline(std::cin >> std::ws, input);
-				if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
-					keepAdvisor = true;
-					break;
-				}
-				if (input == "n" || input == "N" || input == "no" || input == "No") {
-					keepAdvisor = false;
-					break;
-				}
-				if (ctx.logger) {
-					ctx.logger->logDebug("Invalid input. Enter y or n: ");
-				}
-			}
+		bool keepAdvisor = destinationHasCombat; // AI default: keep advisor when combat present
+		if (destinationHasCombat && ctx.adapter) {
+			DecisionRequest req;
+			req.kind = "yn";
+			req.actor_index = factionIndex;
+			req.prompt = "[Bene Gesserit] Keep moved units as advisors in " + toTerritory + "?";
+			auto resp = ctx.adapter->requestDecision(req);
+			keepAdvisor = resp && resp->valid && resp->payload_json == "y";
 		}
 		view.map.addUnitsToTerritory(toTerritory, factionIndex,
 		                              normalUnits, eliteUnits, toSector, keepAdvisor);
@@ -1066,27 +1083,15 @@ bool ShipAndMovePhase::moveUnits(PhaseContext& ctx, int factionIndex,
 			if (!bg) continue;
 			if (static_cast<int>(i) == factionIndex) continue;
 			if (view.map.getCombatUnitsInTerritory(toTerritory, static_cast<int>(i)) <= 0) continue;
-			if (ctx.logger) {
-				ctx.logger->logDebug("[Bene Gesserit] Intrusion in " + toTerritory +
-					": flip fighters to advisors? (y/n): ");
-			}
-			bool flip = !view.interactiveMode;
-			if (view.interactiveMode) {
-				while (true) {
-					std::string input;
-					std::getline(std::cin >> std::ws, input);
-					if (input == "y" || input == "Y" || input == "yes" || input == "Yes") {
-						flip = true;
-						break;
-					}
-					if (input == "n" || input == "N" || input == "no" || input == "No") {
-						flip = false;
-						break;
-					}
-					if (ctx.logger) {
-						ctx.logger->logDebug("Invalid input. Enter y or n: ");
-					}
-				}
+			bool flip = true; // AI default: always flip
+			if (ctx.adapter) {
+				DecisionRequest req;
+				req.kind = "yn";
+				req.actor_index = static_cast<int>(i);
+				req.prompt = "[Bene Gesserit] Intrusion in " + toTerritory +
+					": flip fighters to advisors?";
+				auto resp = ctx.adapter->requestDecision(req);
+				flip = resp && resp->valid && resp->payload_json == "y";
 			}
 			if (flip) {
 				bg->flipFightersToAdvisors(ctx, toTerritory);

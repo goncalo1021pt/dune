@@ -7,6 +7,7 @@
 #include <string>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "interaction/interaction_adapter.hpp"
 
 namespace {
 
@@ -36,38 +37,21 @@ std::string chooseFremenWormDestination(PhaseContext& ctx) {
 		return "";
 	}
 
-	if (!ctx.interactiveMode) {
+	if (ctx.adapter) {
+		int fremenIndex = findFremenPlayerIndex(ctx);
+		DecisionRequest req;
+		req.kind = "select";
+		req.actor_index = fremenIndex;
+		req.prompt = "[Advanced Worm] Fremen chooses worm destination (desert only):";
+		req.options = options;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid && !resp->payload_json.empty()) {
+			return resp->payload_json;
+		}
 		return options[0];
 	}
 
-	if (ctx.logger) {
-		ctx.logger->logDebug("[Advanced Worm] Fremen chooses worm destination (desert only):");
-		for (size_t i = 0; i < options.size(); ++i) {
-			ctx.logger->logDebug("  " + std::to_string(i + 1) + ". " + options[i]);
-		}
-		ctx.logger->logDebug("Choose (1-" + std::to_string(options.size()) + ") or enter desert name: ");
-	}
-
-	while (true) {
-		std::string input;
-		std::getline(std::cin >> std::ws, input);
-		try {
-			int idx = std::stoi(input);
-			if (idx >= 1 && idx <= static_cast<int>(options.size())) {
-				return options[idx - 1];
-			}
-		} catch (...) {
-			for (const std::string& opt : options) {
-				if (opt == input) {
-					return opt;
-				}
-			}
-		}
-
-		if (ctx.logger) {
-			ctx.logger->logDebug("Invalid desert territory. Try again: ");
-		}
-	}
+	return options[0]; // AI default: first desert territory
 }
 
 void resolveAfterWormCardDraw(PhaseContext& ctx, SpiceDeck& deck, GameMap& map, int discardPileIndex) {
