@@ -12,13 +12,9 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include "interaction/interaction_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 
 namespace {
-
-bool hasCard(const Player* player, const std::string& cardName) {
-	const auto& cards = player->getTreacheryCards();
-	return std::find(cards.begin(), cards.end(), cardName) != cards.end();
-}
 
 struct GuildSourceSelection {
 	std::string territory;
@@ -834,72 +830,54 @@ bool ShipAndMovePhase::executePlayerMovement(PhaseContext& ctx, Player* player) 
 		return false;
 	}
 
-	if (hasCard(player, "Hajr")) {
-		bool playHajr = true; // AI default: always play
+	if (ctx.reactions && ctx.reactions->dispatchAfterMovementHajr(ctx, player->getFactionIndex())) {
+		MovementDecision extraDecision;
 		if (ctx.adapter) {
+			std::vector<std::string> extraTerritories =
+				view.map.getTerritoriesWithUnits(player->getFactionIndex());
 			DecisionRequest req;
-			req.kind = "yn";
+			req.kind = "movement";
 			req.actor_index = player->getFactionIndex();
-			req.prompt = player->getFactionName() + ", play Hajr for a second movement this phase?";
+			req.options = extraTerritories;
+			req.int_max = movementRange;
+			req.migration_ctx = &ctx;
 			auto resp = ctx.adapter->requestDecision(req);
-			playHajr = resp && resp->valid && resp->payload_json == "y";
+			if (resp && resp->valid && resp->payload_json.find("\"skip\":true") == std::string::npos) {
+				extraDecision.fromTerritory = jsonExtractString(resp->payload_json, "from");
+				extraDecision.toTerritory   = jsonExtractString(resp->payload_json, "to");
+				extraDecision.normalUnits   = jsonExtractInt(resp->payload_json, "normal");
+				extraDecision.eliteUnits    = jsonExtractInt(resp->payload_json, "elite");
+				extraDecision.fromSector    = jsonExtractInt(resp->payload_json, "from_sector");
+				extraDecision.toSector      = jsonExtractInt(resp->payload_json, "to_sector");
+				extraDecision.shouldMove    = !extraDecision.fromTerritory.empty() && !extraDecision.toTerritory.empty();
+			}
+		} else {
+			extraDecision = aiDecideMovement(ctx, player, movementRange);
 		}
 
-		if (playHajr) {
-			player->removeTreacheryCard("Hajr");
-			if (ctx.logger) {
-				ctx.logger->logDebug("[Hajr] " + player->getFactionName() +
-					" gains one extra movement action.");
-			}
-
-			MovementDecision extraDecision;
-			if (ctx.adapter) {
-				std::vector<std::string> extraTerritories =
-					view.map.getTerritoriesWithUnits(player->getFactionIndex());
-				DecisionRequest req;
-				req.kind = "movement";
-				req.actor_index = player->getFactionIndex();
-				req.options = extraTerritories;
-				req.int_max = movementRange;
-				req.migration_ctx = &ctx;
-				auto resp = ctx.adapter->requestDecision(req);
-				if (resp && resp->valid && resp->payload_json.find("\"skip\":true") == std::string::npos) {
-					extraDecision.fromTerritory = jsonExtractString(resp->payload_json, "from");
-					extraDecision.toTerritory   = jsonExtractString(resp->payload_json, "to");
-					extraDecision.normalUnits   = jsonExtractInt(resp->payload_json, "normal");
-					extraDecision.eliteUnits    = jsonExtractInt(resp->payload_json, "elite");
-					extraDecision.fromSector    = jsonExtractInt(resp->payload_json, "from_sector");
-					extraDecision.toSector      = jsonExtractInt(resp->payload_json, "to_sector");
-					extraDecision.shouldMove    = !extraDecision.fromTerritory.empty() && !extraDecision.toTerritory.empty();
-				}
-			} else {
-				extraDecision = aiDecideMovement(ctx, player, movementRange);
-			}
-
-			if (extraDecision.shouldMove) {
-				if (extraDecision.fromSector == -1) {
-					const territory* src = view.map.getTerritory(extraDecision.fromTerritory);
-					if (src) {
-						for (int s : src->sectors) {
-							if (GameMap::canLeaveSector(s, ctx.stormSector) &&
-								view.map.getUnitsInTerritorySector(extraDecision.fromTerritory,
-									player->getFactionIndex(), s) > 0) {
-								extraDecision.fromSector = s;
-								break;
-							}
+		if (extraDecision.shouldMove) {
+			if (extraDecision.fromSector == -1) {
+				const territory* src = view.map.getTerritory(extraDecision.fromTerritory);
+				if (src) {
+					for (int s : src->sectors) {
+						if (GameMap::canLeaveSector(s, ctx.stormSector) &&
+							view.map.getUnitsInTerritorySector(extraDecision.fromTerritory,
+								player->getFactionIndex(), s) > 0) {
+							extraDecision.fromSector = s;
+							break;
 						}
 					}
 				}
-				if (extraDecision.toSector == -1) {
-					const territory* dest = view.map.getTerritory(extraDecision.toTerritory);
-					extraDecision.toSector = GameMap::firstSafeSector(dest, ctx.stormSector);
-				}
-				if (extraDecision.fromSector != -1 && extraDecision.toSector != -1) {
-					(void)moveUnits(ctx, player->getFactionIndex(),
-						extraDecision.fromTerritory, extraDecision.fromSector,
-						extraDecision.toTerritory,   extraDecision.toSector,
-						extraDecision.normalUnits,   extraDecision.eliteUnits);
-				}
+			}
+			if (extraDecision.toSector == -1) {
+				const territory* dest = view.map.getTerritory(extraDecision.toTerritory);
+				extraDecision.toSector = GameMap::firstSafeSector(dest, ctx.stormSector);
+			}
+			if (extraDecision.fromSector != -1 && extraDecision.toSector != -1) {
+				(void)moveUnits(ctx, player->getFactionIndex(),
+					extraDecision.fromTerritory, extraDecision.fromSector,
+					extraDecision.toTerritory,   extraDecision.toSector,
+					extraDecision.normalUnits,   extraDecision.eliteUnits);
 			}
 		}
 	}

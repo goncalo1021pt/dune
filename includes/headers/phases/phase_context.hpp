@@ -14,6 +14,7 @@ class SpiceDeck;
 class EventLogger;
 class FactionAbility;
 class IInteractionAdapter;
+class ReactionEngine;
 enum class gamePhase : int;
 
 /**
@@ -61,6 +62,12 @@ struct PhaseContext {
 	// Set to a TtyAdapter when interactiveMode=true; nullptr for AI/non-interactive runs.
 	// Will become mandatory (non-null) in PR 4 once all phases are fully migrated.
 	IInteractionAdapter* adapter;
+
+	// Reaction engine: brackets phase code with named ReactionWindows so
+	// Weather Control, Hajr, Voice, Peek, Harkonnen capture, and Tleilaxu
+	// Ghola all dispatch through one place. Owned by Game, never null after
+	// PR 3.
+	ReactionEngine* reactions;
 
 	// Event logging
 	EventLogger* logger;
@@ -223,6 +230,7 @@ struct PhaseContext {
 		bool interactiveMode_ = false,
 		EventLogger* logger_ = nullptr,
 		IInteractionAdapter* adapter_ = nullptr,
+		ReactionEngine* reactions_ = nullptr,
 		const GameFeatureSettings& featureSettings_ = defaultFeatureSettings()
 	)
 		: turnNumber(turnNumber_), currentPhase(currentPhase_),
@@ -235,5 +243,6 @@ struct PhaseContext {
 		  traitorDeck(traitorDeck_),
 		  turnOrder(turnOrder_),
 		  beneGesseritCharity(beneGesseritCharity_), featureSettings(featureSettings_), rng(rng_),
-		  interactiveMode(interactiveMode_), adapter(adapter_), logger(logger_), gameEnded(false) {}
+		  interactiveMode(interactiveMode_), adapter(adapter_), reactions(reactions_),
+		  logger(logger_), gameEnded(false) {}
 };

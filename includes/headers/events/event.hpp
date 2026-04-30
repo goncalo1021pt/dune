@@ -51,7 +51,11 @@ enum class EventType {
 	BIDDING_STARTED,
 	BIDDING_ENDED,
 	BID_PLACED,
-	
+
+	// Reaction events
+	REACTION_WINDOW_OPENED,
+	REACTION_WINDOW_CLOSED,
+
 	// Debug/Info
 	DEBUG_INFO,
 	ERROR_EVENT
