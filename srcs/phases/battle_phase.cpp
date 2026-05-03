@@ -5,6 +5,7 @@
 #include <map.hpp>
 #include <cards/treachery_deck.hpp>
 #include "interaction/interaction_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 #include <iostream>
 #include <algorithm>
 #include <sstream>
@@ -765,6 +766,9 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 			(defenderFaction == "Emperor" && attackerFaction == "Fremen") ? 1 : 2;
 	}
 	// Precedence when both are present: Bene Voice first, then Atreides question, then normal flow.
+	if (ctx.reactions) {
+		ctx.reactions->dispatchBeforeBattlePlanReveal(ctx, attackerIdx, defenderIdx);
+	}
 	BeneVoiceState beneVoice = prepareBeneVoiceForBattle(ctx, attackerIdx, defenderIdx, attacker, defender);
 	AtreidesPeekState atreidesPeek =
 		prepareAtreidesPeekForBattle(ctx, attackerIdx, defenderIdx, attacker, defender);
@@ -1234,8 +1238,8 @@ void BattlePhase::resolveBattle(PhaseContext& ctx, int attackerIdx, const std::s
 	applyBattleOutcome(ctx, outcomeInput);
 
 	Player* winner = view.players[winnerIdx];
-	if (ctx.featureSettings.advancedFactionAbilities) {
-		winner->getFactionAbility()->onBattleWon(ctx, loserIdx);
+	if (ctx.reactions) {
+		ctx.reactions->dispatchAfterBattleResolution(ctx, winnerIdx, loserIdx);
 	}
 	awardWinnerSpiceForDeadLeaders(winner);
 	resolveBattleCardAftermath(winnerIdx, loserIdx);

@@ -16,6 +16,7 @@
 #include "phases/ship_and_move_phase.hpp"
 #include "events/game_event_bus.hpp"
 #include "interaction/tty_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 
 // Forward declarations
 class EventLogger;
@@ -106,6 +107,10 @@ class Game {
 		// Interaction adapter: non-null when interactiveMode=true.
 		// Stored as unique_ptr so the phase context can hold a raw non-owning pointer.
 		std::unique_ptr<IInteractionAdapter> interactionAdapter;
+
+		// Reaction engine: brackets phase code with named reaction windows.
+		// Always present (used by all phases for legality + dispatch).
+		ReactionEngine reactionEngine;
 
 		// Event bus: canonical event log + pub/sub for engine systems.
 		// Constructed before eventLogger (BusBridgeLogger holds a reference to it).

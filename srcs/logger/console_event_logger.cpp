@@ -35,6 +35,8 @@ std::string ConsoleEventLogger::eventTypeToString(EventType type) const {
 		case EventType::BIDDING_STARTED: return "BIDDING_STARTED";
 		case EventType::BIDDING_ENDED: return "BIDDING_ENDED";
 		case EventType::BID_PLACED: return "BID_PLACED";
+		case EventType::REACTION_WINDOW_OPENED: return "REACTION_WINDOW_OPENED";
+		case EventType::REACTION_WINDOW_CLOSED: return "REACTION_WINDOW_CLOSED";
 		case EventType::DEBUG_INFO: return "DEBUG_INFO";
 		case EventType::ERROR_EVENT: return "ERROR_EVENT";
 		default: return "UNKNOWN";
