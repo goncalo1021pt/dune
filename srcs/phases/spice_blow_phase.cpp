@@ -8,6 +8,7 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include "interaction/interaction_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 
 namespace {
 
@@ -37,8 +38,13 @@ std::string chooseFremenWormDestination(PhaseContext& ctx) {
 		return "";
 	}
 
+	int fremenIndex = findFremenPlayerIndex(ctx);
+	if (ctx.reactions && fremenIndex >= 0 &&
+		ctx.reactions->dispatchKaramaBlock(ctx, fremenIndex, "Worm Direction")) {
+		return "";
+	}
+
 	if (ctx.adapter) {
-		int fremenIndex = findFremenPlayerIndex(ctx);
 		DecisionRequest req;
 		req.kind = "select";
 		req.actor_index = fremenIndex;
