@@ -263,11 +263,12 @@ int ReactionEngine::applyGholaForceRevive(Player& player, int requested) {
 
 namespace {
 
-// Choose force count for Ghola via adapter int prompt; returns 0 if the
-// player declines or the adapter is unavailable.
-int promptGholaForceCount(PhaseContext& ctx, int playerIndex, int maxAvailable) {
+// Choose force count for a free-revival via adapter int prompt; returns 0
+// if the player declines or the adapter is unavailable. hardCap caps the
+// upper bound (Ghola = 5, Emperor advanced Karama = 3).
+int promptForceReviveCount(PhaseContext& ctx, int playerIndex, int maxAvailable, int hardCap) {
 	if (!ctx.adapter) return 0;
-	int upper = std::min(5, maxAvailable);
+	int upper = std::min(hardCap, maxAvailable);
 	if (upper <= 0) return 0;
 	DecisionRequest req;
 	req.kind = "int";
@@ -281,7 +282,7 @@ int promptGholaForceCount(PhaseContext& ctx, int playerIndex, int maxAvailable) 
 }
 
 // Choose dead leader index via adapter select prompt; returns -1 on cancel.
-int promptGholaLeaderIndex(PhaseContext& ctx, int playerIndex, const Player& player) {
+int promptLeaderReviveIndex(PhaseContext& ctx, int playerIndex, const Player& player) {
 	if (!ctx.adapter) return -1;
 	const auto& dead = player.getDeadLeaders();
 	if (dead.empty()) return -1;
@@ -302,17 +303,32 @@ int promptGholaLeaderIndex(PhaseContext& ctx, int playerIndex, const Player& pla
 
 void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 	const std::string& checkpointLabel) {
-	bool anyHolder = false;
-	for (Player* p : ctx.players) {
-		if (playerHasCard(p, "Tleilaxu Ghola")) { anyHolder = true; break; }
-	}
-	if (!anyHolder) return;
+	// Returns true if at least one player holds a card whose effect can
+	// fire here: Tleilaxu Ghola (any faction), or a real Karama in the
+	// hand of a faction with an AnytimeSafe advanced power (Emperor /
+	// Fremen / Harkonnen — BG has no advanced Karama power).
+	auto anyPlayAvailable = [](const std::vector<Player*>& players) {
+		for (Player* p : players) {
+			if (playerHasCard(p, "Tleilaxu Ghola")) return true;
+			if (playerHasCard(p, "Karama")) {
+				auto* ability = p->getFactionAbility();
+				if (!ability) continue;
+				const std::string& name = ability->getFactionName();
+				if (name == "Emperor" || name == "Fremen" || name == "Harkonnen") {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	if (!anyPlayAvailable(ctx.players)) return;
 
 	WindowGuard guard(*this, ReactionWindow::AnytimeSafe);
 	(void)checkpointLabel;
 
-	// AI default (no adapter): never play Ghola — preserves seed-42 regression
-	// and matches the conservative "do nothing" policy used elsewhere.
+	// AI default (no adapter): never play Ghola or advanced Karama —
+	// preserves seed-42 regression and matches the conservative "do
+	// nothing" policy used elsewhere.
 	if (!ctx.adapter) return;
 
 	for (int idx : ctx.turnOrder) {
@@ -354,13 +370,13 @@ void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 		bool applied = false;
 		std::string detail;
 		if (choice == "leader") {
-			int deadIdx = promptGholaLeaderIndex(ctx, idx, *player);
+			int deadIdx = promptLeaderReviveIndex(ctx, idx, *player);
 			if (deadIdx < 0) continue;
 			std::string leaderName = player->getDeadLeaders()[deadIdx].name;
 			applied = applyGholaLeaderRevive(*player, static_cast<std::size_t>(deadIdx));
 			if (applied) detail = "leader " + leaderName;
 		} else if (choice == "forces") {
-			int requested = promptGholaForceCount(ctx, idx, destroyedForces);
+			int requested = promptForceReviveCount(ctx, idx, destroyedForces, 5);
 			if (requested <= 0) continue;
 			int revived = applyGholaForceRevive(*player, requested);
 			applied = revived > 0;
@@ -375,6 +391,71 @@ void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 			ctx.logger->logDebug("[Ghola] " + player->getFactionName() +
 				" revives " + detail);
 		}
+	}
+
+	// --- Emperor advanced Karama: free 1-leader OR 1-3 force revival ---
+	for (int idx : ctx.turnOrder) {
+		Player* player = ctx.players[idx];
+		auto* ability = player->getFactionAbility();
+		if (!ability || ability->getFactionName() != "Emperor") continue;
+		// Faction-specific advanced Karama powers require a real Karama in
+		// hand; BG worthless-as-Karama only triggers the basic block path.
+		if (!playerHasCard(player, "Karama")) continue;
+
+		bool hasDeadLeader = !player->getDeadLeaders().empty();
+		int destroyedForces = player->getUnitsDestroyed() + player->getEliteUnitsDestroyed();
+		if (!hasDeadLeader && destroyedForces <= 0) continue;
+
+		DecisionRequest ynReq;
+		ynReq.kind = "yn";
+		ynReq.actor_index = idx;
+		ynReq.prompt = player->getFactionName() +
+			", play Karama for the Imperial revival (1 leader OR up to 3 forces)?";
+		auto ynResp = ctx.adapter->requestDecision(ynReq);
+		if (!ynResp || !ynResp->valid || ynResp->payload_json != "y") continue;
+
+		std::string choice;
+		if (hasDeadLeader && destroyedForces > 0) {
+			DecisionRequest selReq;
+			selReq.kind = "select";
+			selReq.actor_index = idx;
+			selReq.prompt = "Revive a leader or forces?";
+			selReq.options = {"leader", "forces"};
+			auto selResp = ctx.adapter->requestDecision(selReq);
+			if (!selResp || !selResp->valid) continue;
+			choice = selResp->payload_json;
+		} else if (hasDeadLeader) {
+			choice = "leader";
+		} else {
+			choice = "forces";
+		}
+
+		bool applied = false;
+		std::string detail;
+		if (choice == "leader") {
+			int deadIdx = promptLeaderReviveIndex(ctx, idx, *player);
+			if (deadIdx < 0) continue;
+			std::string leaderName = player->getDeadLeaders()[deadIdx].name;
+			applied = applyEmperorKaramaLeaderRevive(*player, ctx.treacheryDeck,
+				static_cast<std::size_t>(deadIdx));
+			if (applied) detail = "leader " + leaderName;
+		} else {
+			int requested = promptForceReviveCount(ctx, idx, destroyedForces, 3);
+			if (requested <= 0) continue;
+			int revived = applyEmperorKaramaForceRevive(*player, ctx.treacheryDeck, requested);
+			applied = revived > 0;
+			if (applied) detail = std::to_string(revived) + " forces";
+		}
+
+		if (!applied) continue;
+
+		logWindowOpen(ctx, ReactionWindow::AnytimeSafe,
+			player->getFactionName() + " played Karama for Imperial revival (" + detail + ")");
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Karama:Imperial Revival] " + player->getFactionName() +
+				" revives " + detail);
+		}
+		break;  // Only one Emperor in a game; no need to keep iterating.
 	}
 }
 
@@ -404,6 +485,35 @@ bool ReactionEngine::applyKaramaPlay(Player& player, TreacheryDeck& deck,
 	player.removeTreacheryCard(cardName);
 	deck.discard(cardName);
 	return true;
+}
+
+bool ReactionEngine::applyEmperorKaramaLeaderRevive(Player& player,
+	TreacheryDeck& deck, std::size_t deadIndex) {
+	const auto& cards = player.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), "Karama") == cards.end()) {
+		return false;
+	}
+	if (deadIndex >= player.getDeadLeaders().size()) return false;
+	player.reviveLeader(deadIndex);
+	player.removeTreacheryCard("Karama");
+	deck.discard("Karama");
+	return true;
+}
+
+int ReactionEngine::applyEmperorKaramaForceRevive(Player& player,
+	TreacheryDeck& deck, int requested) {
+	const auto& cards = player.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), "Karama") == cards.end()) {
+		return 0;
+	}
+	int totalDestroyed = player.getUnitsDestroyed() + player.getEliteUnitsDestroyed();
+	int n = std::min(requested, 3);  // Imperial revival caps at 3 forces
+	n = std::min(n, totalDestroyed);
+	if (n <= 0) return 0;
+	player.reviveUnits(n);  // normals first, then elites
+	player.removeTreacheryCard("Karama");
+	deck.discard("Karama");
+	return n;
 }
 
 bool ReactionEngine::dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,

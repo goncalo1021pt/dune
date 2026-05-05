@@ -298,6 +298,92 @@ TEST_CASE("applyKaramaPlay returns false when the named card is not in hand") {
 	CHECK(deck.discardSize() == 0);
 }
 
+TEST_CASE("applyEmperorKaramaLeaderRevive revives a dead leader and discards Karama") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.addTreacheryCard("Karama");
+	p.addLeader(Leader("Hasimir Fenring", 6));
+	p.killLeader(0);
+	REQUIRE(p.getDeadLeaders().size() == 1);
+
+	CHECK(ReactionEngine::applyEmperorKaramaLeaderRevive(p, deck, 0));
+	CHECK(p.getDeadLeaders().empty());
+	REQUIRE(p.getAliveLeaders().size() == 1);
+	CHECK(p.getAliveLeaders()[0].name == "Hasimir Fenring");
+	CHECK(p.getTreacheryCards().empty());
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyEmperorKaramaLeaderRevive refuses without Karama and on bad index") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.addLeader(Leader("Hasimir Fenring", 6));
+	p.killLeader(0);
+
+	// No Karama in hand.
+	CHECK_FALSE(ReactionEngine::applyEmperorKaramaLeaderRevive(p, deck, 0));
+	CHECK(p.getDeadLeaders().size() == 1);
+	CHECK(deck.discardSize() == 0);
+
+	p.addTreacheryCard("Karama");
+	// Out-of-range index — Karama must NOT be discarded.
+	CHECK_FALSE(ReactionEngine::applyEmperorKaramaLeaderRevive(p, deck, 9));
+	REQUIRE(p.getTreacheryCards().size() == 1);
+	CHECK(p.getTreacheryCards()[0] == "Karama");
+	CHECK(deck.discardSize() == 0);
+}
+
+TEST_CASE("applyEmperorKaramaForceRevive caps at 3 and at total destroyed") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.addTreacheryCard("Karama");
+	p.setUnitsReserve(7);
+	p.setEliteUnitsReserve(2);
+	p.destroyUnits(7);
+	p.destroyEliteUnits(2);
+	REQUIRE(p.getUnitsDestroyed() == 7);
+	REQUIRE(p.getEliteUnitsDestroyed() == 2);
+
+	// Request 5 — capped to 3 (Imperial revival hard cap, not Ghola's 5).
+	CHECK(ReactionEngine::applyEmperorKaramaForceRevive(p, deck, 5) == 3);
+	CHECK(p.getUnitsReserve() == 3);  // all 3 came from normals
+	CHECK(p.getEliteUnitsReserve() == 0);
+	CHECK(p.getUnitsDestroyed() == 4);
+	CHECK(p.getEliteUnitsDestroyed() == 2);
+	CHECK(p.getTreacheryCards().empty());
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyEmperorKaramaForceRevive is a no-op without Karama or with nothing destroyed") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.setUnitsReserve(3);
+	p.destroyUnits(3);
+
+	// No Karama in hand.
+	CHECK(ReactionEngine::applyEmperorKaramaForceRevive(p, deck, 2) == 0);
+	CHECK(p.getUnitsDestroyed() == 3);
+	CHECK(deck.discardSize() == 0);
+
+	// With Karama but nothing destroyed — card kept, nothing discarded.
+	Player q(2, "Emperor");
+	q.addTreacheryCard("Karama");
+	CHECK(ReactionEngine::applyEmperorKaramaForceRevive(q, deck, 2) == 0);
+	REQUIRE(q.getTreacheryCards().size() == 1);
+	CHECK(q.getTreacheryCards()[0] == "Karama");
+	CHECK(deck.discardSize() == 0);
+}
+
 TEST_CASE("TreacheryDeck discard pile grows on discard and resets on initialize") {
 	std::mt19937 rng(42);
 	TreacheryDeck deck(rng);

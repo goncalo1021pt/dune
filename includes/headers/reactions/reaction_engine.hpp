@@ -102,6 +102,21 @@ public:
 	static bool applyKaramaPlay(Player& player, TreacheryDeck& deck,
 		const std::string& cardName);
 
+	// Apply Emperor's advanced Karama leader revival: free-revive the dead
+	// leader at deadIndex and discard the player's "Karama" card. Refuses
+	// (no state change) if the player does not hold "Karama" or deadIndex
+	// is out of range. Note: BG worthless-as-Karama does NOT trigger
+	// faction-specific advanced powers — only a real Karama card does.
+	static bool applyEmperorKaramaLeaderRevive(Player& player,
+		TreacheryDeck& deck, std::size_t deadIndex);
+
+	// Apply Emperor's advanced Karama force revival: free-revive up to
+	// min(requested, 3, total destroyed) forces (normals first, then
+	// elites). Discards the player's "Karama" card iff at least one force
+	// is revived. Returns the number of forces revived.
+	static int applyEmperorKaramaForceRevive(Player& player,
+		TreacheryDeck& deck, int requested);
+
 	// RAII helper: enters a window for the duration of a scope. Restores
 	// the previous window state on exit so nested dispatches behave
 	// correctly (e.g., AnytimeSafe inside AfterBattleResolution). Public
