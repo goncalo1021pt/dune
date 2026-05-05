@@ -117,6 +117,15 @@ public:
 	static int applyEmperorKaramaForceRevive(Player& player,
 		TreacheryDeck& deck, int requested);
 
+	// Apply Fremen's advanced Karama sandworm placement: place a worm in
+	// the named desert territory and resolve it as a normal sandworm
+	// (devours forces, destroys spice; Fremen on the target may ride away
+	// via onWormHitsTerritory). Discards the player's "Karama" card on
+	// success. Refuses if the player does not hold "Karama" or the
+	// territory is not desert.
+	static bool applyFremenKaramaSandworm(PhaseContext& ctx, Player& fremen,
+		TreacheryDeck& deck, const std::string& territoryName);
+
 	// RAII helper: enters a window for the duration of a scope. Restores
 	// the previous window state on exit so nested dispatches behave
 	// correctly (e.g., AnytimeSafe inside AfterBattleResolution). Public

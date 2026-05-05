@@ -22,18 +22,8 @@ int findFremenPlayerIndex(PhaseContext& ctx) {
 	return -1;
 }
 
-std::vector<std::string> collectDesertTerritories(const GameMap& map) {
-	std::vector<std::string> result;
-	for (const auto& terr : map.getTerritories()) {
-		if (terr.terrain == terrainType::desert) {
-			result.push_back(terr.name);
-		}
-	}
-	return result;
-}
-
 std::string chooseFremenWormDestination(PhaseContext& ctx) {
-	const std::vector<std::string> options = collectDesertTerritories(ctx.map);
+	const std::vector<std::string> options = SpiceBlowPhase::getDesertTerritories(ctx.map);
 	if (options.empty()) {
 		return "";
 	}
@@ -80,6 +70,16 @@ void resolveAfterWormCardDraw(PhaseContext& ctx, SpiceDeck& deck, GameMap& map, 
 	deck.discardCard(extraCard, discardPileIndex);
 }
 
+}
+
+std::vector<std::string> SpiceBlowPhase::getDesertTerritories(const GameMap& map) {
+	std::vector<std::string> result;
+	for (const auto& terr : map.getTerritories()) {
+		if (terr.terrain == terrainType::desert) {
+			result.push_back(terr.name);
+		}
+	}
+	return result;
 }
 
 void SpiceBlowPhase::resolveWormOnTerritory(const std::string& territoryName, GameMap& map, PhaseContext* ctxPtr) {

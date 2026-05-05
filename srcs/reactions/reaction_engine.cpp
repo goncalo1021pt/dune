@@ -6,6 +6,8 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include "cards/treachery_deck.hpp"
+#include "phases/spice_blow_phase.hpp"
+#include "map.hpp"
 
 #include <algorithm>
 #include <random>
@@ -457,6 +459,45 @@ void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 		}
 		break;  // Only one Emperor in a game; no need to keep iterating.
 	}
+
+	// --- Fremen advanced Karama: place a sandworm in any desert territory ---
+	for (int idx : ctx.turnOrder) {
+		Player* player = ctx.players[idx];
+		auto* ability = player->getFactionAbility();
+		if (!ability || ability->getFactionName() != "Fremen") continue;
+		if (!playerHasCard(player, "Karama")) continue;
+
+		std::vector<std::string> deserts = SpiceBlowPhase::getDesertTerritories(ctx.map);
+		if (deserts.empty()) continue;
+
+		DecisionRequest ynReq;
+		ynReq.kind = "yn";
+		ynReq.actor_index = idx;
+		ynReq.prompt = player->getFactionName() +
+			", play Karama to summon a sandworm to a desert territory?";
+		auto ynResp = ctx.adapter->requestDecision(ynReq);
+		if (!ynResp || !ynResp->valid || ynResp->payload_json != "y") continue;
+
+		DecisionRequest selReq;
+		selReq.kind = "select";
+		selReq.actor_index = idx;
+		selReq.prompt = "Choose a desert territory to send the sandworm to:";
+		selReq.options = deserts;
+		auto selResp = ctx.adapter->requestDecision(selReq);
+		if (!selResp || !selResp->valid || selResp->payload_json.empty()) continue;
+		const std::string& target = selResp->payload_json;
+		if (std::find(deserts.begin(), deserts.end(), target) == deserts.end()) continue;
+
+		if (!applyFremenKaramaSandworm(ctx, *player, ctx.treacheryDeck, target)) continue;
+
+		logWindowOpen(ctx, ReactionWindow::AnytimeSafe,
+			player->getFactionName() + " played Karama to summon a worm at " + target);
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Karama:Sandworm] " + player->getFactionName() +
+				" sends a worm to " + target);
+		}
+		break;  // Only one Fremen in a game.
+	}
 }
 
 // --- BeforeFactionAdvantage (Karama-block) -------------------------------
@@ -514,6 +555,24 @@ int ReactionEngine::applyEmperorKaramaForceRevive(Player& player,
 	player.removeTreacheryCard("Karama");
 	deck.discard("Karama");
 	return n;
+}
+
+bool ReactionEngine::applyFremenKaramaSandworm(PhaseContext& ctx, Player& fremen,
+	TreacheryDeck& deck, const std::string& territoryName) {
+	const auto& cards = fremen.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), "Karama") == cards.end()) {
+		return false;
+	}
+	const territory* terr = ctx.map.getTerritory(territoryName);
+	if (!terr || terr->terrain != terrainType::desert) return false;
+
+	// Discard the card first so the worm-resolution log lines that follow
+	// trail the Karama play in the event stream.
+	fremen.removeTreacheryCard("Karama");
+	deck.discard("Karama");
+
+	SpiceBlowPhase::resolveWormOnTerritory(territoryName, ctx.map, &ctx);
+	return true;
 }
 
 bool ReactionEngine::dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,
