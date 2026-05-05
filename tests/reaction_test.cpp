@@ -196,16 +196,41 @@ TEST_CASE("applyGholaForceRevive is a no-op when nothing is destroyed and keeps 
 	CHECK(p.getTreacheryCards()[0] == "Tleilaxu Ghola");
 }
 
-TEST_CASE("Karama is legal only inside BeforeFactionAdvantage") {
+TEST_CASE("Karama legality covers all four windows used by basic and advanced uses") {
 	ReactionEngine engine;
+	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+
+	// Basic block-an-advantage use.
 	{
 		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeFactionAdvantage);
 		CHECK(engine.isReactionLegalNow("Karama"));
 	}
-	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+	// Advanced AnytimeSafe powers (Emperor / Fremen / Harkonnen).
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::AnytimeSafe);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
+	// Advanced Guild stop-shipment.
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeShipment);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
+	// Advanced Atreides peek-everything.
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeBattlePlanReveal);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
 
-	// Karama is not legal in unrelated windows.
-	ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeBattlePlanReveal);
+	// Unrelated windows reject Karama.
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::AfterMovement);
+		CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+	}
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeStormMove);
+		CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+	}
+
 	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
 }
 

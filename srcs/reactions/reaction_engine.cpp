@@ -19,15 +19,37 @@ bool playerHasCard(const Player* p, const std::string& name) {
 }
 
 // Static mapping from reaction-card name to the window in which it is legal.
-// Keep alphabetised. Cards not listed are treated as not-a-reaction (always
-// illegal via the engine; ordinary play during BIDDING/BATTLE is unaffected
-// since those plays don't go through ReactionEngine::isReactionLegalNow).
+// Cards not listed are treated as not-a-reaction (always illegal via the
+// engine; ordinary play during BIDDING/BATTLE is unaffected since those
+// plays don't go through ReactionEngine::isReactionLegalNow).
+//
+// Karama is special-cased: it has multiple legal windows (basic block-an-
+// advantage at BeforeFactionAdvantage; advanced per-faction powers at
+// AnytimeSafe / BeforeShipment / BeforeBattlePlanReveal). isReactionLegalNow
+// handles Karama explicitly rather than going through this helper.
 ReactionWindow legalWindowForCard(const std::string& cardName) {
 	if (cardName == "Weather Control") return ReactionWindow::BeforeStormMove;
 	if (cardName == "Hajr")            return ReactionWindow::AfterMovement;
 	if (cardName == "Tleilaxu Ghola")  return ReactionWindow::AnytimeSafe;
-	if (cardName == "Karama")          return ReactionWindow::BeforeFactionAdvantage;
 	return ReactionWindow::None;
+}
+
+// Karama can be played in several windows depending on use:
+//   - BeforeFactionAdvantage:  basic "block an advantage" (PR #27)
+//   - AnytimeSafe:             advanced powers (Emperor revive, Fremen
+//                              sandworm placement, Harkonnen hand-swap)
+//   - BeforeShipment:          advanced Guild stop-shipment
+//   - BeforeBattlePlanReveal:  advanced Atreides peek-everything
+bool isKaramaLegalInWindow(ReactionWindow w) {
+	switch (w) {
+		case ReactionWindow::BeforeFactionAdvantage:
+		case ReactionWindow::AnytimeSafe:
+		case ReactionWindow::BeforeShipment:
+		case ReactionWindow::BeforeBattlePlanReveal:
+			return true;
+		default:
+			return false;
+	}
 }
 
 // Worthless treachery card names. Player only stores treachery card names,
@@ -69,6 +91,10 @@ const char* reactionWindowName(ReactionWindow w) {
 }
 
 bool ReactionEngine::isReactionLegalNow(const std::string& cardName) const {
+	if (cardName == "Karama") {
+		return isKaramaLegalInWindow(currentWindow_);
+	}
+
 	ReactionWindow needed = legalWindowForCard(cardName);
 	if (needed == ReactionWindow::None) return false;
 
