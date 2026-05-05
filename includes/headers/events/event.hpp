@@ -61,28 +61,49 @@ enum class EventType {
 	ERROR_EVENT
 };
 
+// Visibility tag — used by the multiplayer server to decide whether an event
+// should be forwarded to a given client. Public events are visible to all
+// players; private events are filtered to actorFactionIndex.
+//
+// All existing engine emit sites default to Public. Event sites that touch
+// hidden information (treachery card draws, traitor cards, BG prediction,
+// blind bids) should override visibility once the server-side filter lands.
+enum class EventVisibility {
+	Public,
+	PrivateToActor,
+};
+
 // Game event structure
 struct Event {
 	EventType type;
 	std::string message;
 	int turnNumber;
 	std::string currentPhase;
-	
+
 	// Optional context
 	std::string playerFaction;
 	std::string territory;
 	int unitCount;
 	int spiceValue;
 	int leaderPower;
-	
-	Event() 
+
+	// Multiplayer redaction. Defaults to Public; sites that emit hidden info
+	// (private card draws, blind bids, BG prediction setup) should set
+	// PrivateToActor and populate actorFactionIndex so the server-side
+	// filter can route the event to the right client.
+	EventVisibility visibility;
+	int actorFactionIndex;
+
+	Event()
 		: type(EventType::DEBUG_INFO), message(""), turnNumber(0), currentPhase(""),
-		  playerFaction(""), territory(""), unitCount(0), spiceValue(0), leaderPower(0) {}
-	
+		  playerFaction(""), territory(""), unitCount(0), spiceValue(0), leaderPower(0),
+		  visibility(EventVisibility::Public), actorFactionIndex(-1) {}
+
 	Event(EventType eventType, const std::string& msg, int turn, const std::string& phase)
 		: type(eventType), message(msg), turnNumber(turn), currentPhase(phase),
-		  playerFaction(""), territory(""), unitCount(0), spiceValue(0), leaderPower(0) {}
-	
+		  playerFaction(""), territory(""), unitCount(0), spiceValue(0), leaderPower(0),
+		  visibility(EventVisibility::Public), actorFactionIndex(-1) {}
+
 	// Helper method to create event with all fields
 	static Event createWithContext(
 		EventType eventType,

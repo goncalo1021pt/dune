@@ -5,6 +5,7 @@ objs/
 *.so
 dune
 tests/run
+tests/ffi_smoke
 
 # IDE
 .vscode/

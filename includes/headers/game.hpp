@@ -91,6 +91,7 @@ class Game {
 		std::vector<int> playerTokenSectors;
 		GameMap _map;
 		std::mt19937 rng;
+		unsigned int initialSeed;
 
 		SpiceDeck spiceDeck;
 
@@ -141,12 +142,19 @@ class Game {
 		// Getters
 		int getPlayerCount() const;
 		int getTurnNumber() const;
+		gamePhase getCurrentPhase() const { return currentPhase; }
 		int getStormSector() const;
 		int getLastStormCard() const;
 		int getNextStormCard() const;
 		const Player* getPlayer(int index) const;
 		const std::vector<territory>& getTerritories() const;
+		const GameMap& getMap() const { return _map; }
+		const TreacheryDeck& getTreacheryDeck() const { return treacheryDeck; }
+		const ReactionEngine& getReactionEngine() const { return reactionEngine; }
 		bool isInteractiveMode() const;
+		bool isGameEnded() const { return gameEnded; }
+		unsigned int getInitialSeed() const { return initialSeed; }
+		const GameFeatureSettings& getFeatureSettings() const { return featureSettings; }
 		const std::vector<int>& getTurnOrder() const;
 
 		// Event bus accessor (used by tests, the FFI layer, and future Godot bridge).
