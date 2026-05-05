@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 #include "reactions/reaction_window.hpp"
 
 struct PhaseContext;
@@ -90,6 +91,13 @@ public:
 	bool dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,
 		const std::string& advantageLabel);
 
+	// Open a BeforeShipment window and offer the Spacing Guild — and only
+	// Guild — the chance to play a real Karama to cancel an off-planet
+	// shipment (advanced Karama power). Returns true if Guild cancelled
+	// the shipment. AI default declines. shipperIdx is the player about
+	// to ship; the Guild player cannot Karama-stop their own shipment.
+	bool dispatchBeforeShipment(PhaseContext& ctx, int shipperIdx);
+
 	// Returns the name of the card a player would consume to play a Karama,
 	// or "" if they hold none. Honors BG canUseWorthlessAsKarama: a real
 	// Karama in hand always wins; otherwise, for a BG-eligible player, the
@@ -101,6 +109,44 @@ public:
 	// in hand (no state change).
 	static bool applyKaramaPlay(Player& player, TreacheryDeck& deck,
 		const std::string& cardName);
+
+	// Apply Emperor's advanced Karama leader revival: free-revive the dead
+	// leader at deadIndex and discard the player's "Karama" card. Refuses
+	// (no state change) if the player does not hold "Karama" or deadIndex
+	// is out of range. Note: BG worthless-as-Karama does NOT trigger
+	// faction-specific advanced powers — only a real Karama card does.
+	static bool applyEmperorKaramaLeaderRevive(Player& player,
+		TreacheryDeck& deck, std::size_t deadIndex);
+
+	// Apply Emperor's advanced Karama force revival: free-revive up to
+	// min(requested, 3, total destroyed) forces (normals first, then
+	// elites). Discards the player's "Karama" card iff at least one force
+	// is revived. Returns the number of forces revived.
+	static int applyEmperorKaramaForceRevive(Player& player,
+		TreacheryDeck& deck, int requested);
+
+	// Apply Fremen's advanced Karama sandworm placement: place a worm in
+	// the named desert territory and resolve it as a normal sandworm
+	// (devours forces, destroys spice; Fremen on the target may ride away
+	// via onWormHitsTerritory). Discards the player's "Karama" card on
+	// success. Refuses if the player does not hold "Karama" or the
+	// territory is not desert.
+	static bool applyFremenKaramaSandworm(PhaseContext& ctx, Player& fremen,
+		TreacheryDeck& deck, const std::string& territoryName);
+
+	// Apply Harkonnen's advanced Karama hand-swap: take the cards at
+	// 'takeIndices' from 'target's hand (each index is read against the
+	// live target hand at that iteration; sizes stay constant so all
+	// indices in [0, original size) remain valid) and exchange each for
+	// the named card in 'giveBack' from 'harkonnen's hand. Discards the
+	// "Karama" card iff at least one pair was actually swapped. Returns
+	// the number of pairs swapped. Refuses if Harkonnen does not hold
+	// "Karama" or any giveBack name is "Karama" (the Karama itself is
+	// discarded, not given).
+	static int applyHarkonnenKaramaHandSwap(Player& harkonnen, Player& target,
+		TreacheryDeck& deck,
+		const std::vector<int>& takeIndices,
+		const std::vector<std::string>& giveBack);
 
 	// RAII helper: enters a window for the duration of a scope. Restores
 	// the previous window state on exit so nested dispatches behave

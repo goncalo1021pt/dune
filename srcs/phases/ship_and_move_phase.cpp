@@ -437,7 +437,15 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 		if (ctx.logger) ctx.logger->logDebug("Shipment: No units in reserve");
 		return false;
 	}
-	
+
+	// Guild advanced Karama opportunity: Guild may cancel any off-planet
+	// shipment (including their own) by spending a real Karama card.
+	// Cross-Shipment and Return-to-Reserves are on-planet and not covered
+	// here.
+	if (ctx.reactions && ctx.reactions->dispatchBeforeShipment(ctx, player->getFactionIndex())) {
+		return false;
+	}
+
 	std::vector<std::string> validTargets = getValidDeploymentTargets(ctx, player->getFactionIndex());
 	
 	DeploymentDecision decision;

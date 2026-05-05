@@ -5,6 +5,7 @@
 #include "leader.hpp"
 #include "cards/treachery_deck.hpp"
 #include "factions/faction_ability.hpp"
+#include <algorithm>
 #include <random>
 
 namespace {
@@ -196,16 +197,41 @@ TEST_CASE("applyGholaForceRevive is a no-op when nothing is destroyed and keeps 
 	CHECK(p.getTreacheryCards()[0] == "Tleilaxu Ghola");
 }
 
-TEST_CASE("Karama is legal only inside BeforeFactionAdvantage") {
+TEST_CASE("Karama legality covers all four windows used by basic and advanced uses") {
 	ReactionEngine engine;
+	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+
+	// Basic block-an-advantage use.
 	{
 		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeFactionAdvantage);
 		CHECK(engine.isReactionLegalNow("Karama"));
 	}
-	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+	// Advanced AnytimeSafe powers (Emperor / Fremen / Harkonnen).
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::AnytimeSafe);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
+	// Advanced Guild stop-shipment.
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeShipment);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
+	// Advanced Atreides peek-everything.
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeBattlePlanReveal);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
 
-	// Karama is not legal in unrelated windows.
-	ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeBattlePlanReveal);
+	// Unrelated windows reject Karama.
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::AfterMovement);
+		CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+	}
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeStormMove);
+		CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+	}
+
 	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
 }
 
@@ -271,6 +297,226 @@ TEST_CASE("applyKaramaPlay returns false when the named card is not in hand") {
 	Player p(0, "Atreides");
 	CHECK_FALSE(ReactionEngine::applyKaramaPlay(p, deck, "Karama"));
 	CHECK(deck.discardSize() == 0);
+}
+
+TEST_CASE("applyEmperorKaramaLeaderRevive revives a dead leader and discards Karama") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.addTreacheryCard("Karama");
+	p.addLeader(Leader("Hasimir Fenring", 6));
+	p.killLeader(0);
+	REQUIRE(p.getDeadLeaders().size() == 1);
+
+	CHECK(ReactionEngine::applyEmperorKaramaLeaderRevive(p, deck, 0));
+	CHECK(p.getDeadLeaders().empty());
+	REQUIRE(p.getAliveLeaders().size() == 1);
+	CHECK(p.getAliveLeaders()[0].name == "Hasimir Fenring");
+	CHECK(p.getTreacheryCards().empty());
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyEmperorKaramaLeaderRevive refuses without Karama and on bad index") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.addLeader(Leader("Hasimir Fenring", 6));
+	p.killLeader(0);
+
+	// No Karama in hand.
+	CHECK_FALSE(ReactionEngine::applyEmperorKaramaLeaderRevive(p, deck, 0));
+	CHECK(p.getDeadLeaders().size() == 1);
+	CHECK(deck.discardSize() == 0);
+
+	p.addTreacheryCard("Karama");
+	// Out-of-range index — Karama must NOT be discarded.
+	CHECK_FALSE(ReactionEngine::applyEmperorKaramaLeaderRevive(p, deck, 9));
+	REQUIRE(p.getTreacheryCards().size() == 1);
+	CHECK(p.getTreacheryCards()[0] == "Karama");
+	CHECK(deck.discardSize() == 0);
+}
+
+TEST_CASE("applyEmperorKaramaForceRevive caps at 3 and at total destroyed") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.addTreacheryCard("Karama");
+	p.setUnitsReserve(7);
+	p.setEliteUnitsReserve(2);
+	p.destroyUnits(7);
+	p.destroyEliteUnits(2);
+	REQUIRE(p.getUnitsDestroyed() == 7);
+	REQUIRE(p.getEliteUnitsDestroyed() == 2);
+
+	// Request 5 — capped to 3 (Imperial revival hard cap, not Ghola's 5).
+	CHECK(ReactionEngine::applyEmperorKaramaForceRevive(p, deck, 5) == 3);
+	CHECK(p.getUnitsReserve() == 3);  // all 3 came from normals
+	CHECK(p.getEliteUnitsReserve() == 0);
+	CHECK(p.getUnitsDestroyed() == 4);
+	CHECK(p.getEliteUnitsDestroyed() == 2);
+	CHECK(p.getTreacheryCards().empty());
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyEmperorKaramaForceRevive is a no-op without Karama or with nothing destroyed") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(2, "Emperor");
+	p.setUnitsReserve(3);
+	p.destroyUnits(3);
+
+	// No Karama in hand.
+	CHECK(ReactionEngine::applyEmperorKaramaForceRevive(p, deck, 2) == 0);
+	CHECK(p.getUnitsDestroyed() == 3);
+	CHECK(deck.discardSize() == 0);
+
+	// With Karama but nothing destroyed — card kept, nothing discarded.
+	Player q(2, "Emperor");
+	q.addTreacheryCard("Karama");
+	CHECK(ReactionEngine::applyEmperorKaramaForceRevive(q, deck, 2) == 0);
+	REQUIRE(q.getTreacheryCards().size() == 1);
+	CHECK(q.getTreacheryCards()[0] == "Karama");
+	CHECK(deck.discardSize() == 0);
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap performs a 1-for-1 blind swap and discards Karama") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+
+	Player h(3, "Harkonnen");
+	h.addTreacheryCard("Karama");
+	h.addTreacheryCard("Crysknife");
+	h.addTreacheryCard("Shield");
+
+	Player t(0, "Atreides");
+	t.addTreacheryCard("Lasgun");
+	t.addTreacheryCard("Snooper");
+
+	// Take target index 0 ("Lasgun"), give "Crysknife".
+	int swapped = ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+		{0}, {"Crysknife"});
+	CHECK(swapped == 1);
+
+	// Harkonnen lost Karama + Crysknife, gained Lasgun. Has Shield + Lasgun.
+	REQUIRE(h.getTreacheryCards().size() == 2);
+	const auto& hHand = h.getTreacheryCards();
+	CHECK(std::find(hHand.begin(), hHand.end(), "Karama") == hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Crysknife") == hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Lasgun") != hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Shield") != hHand.end());
+
+	// Target lost Lasgun, gained Crysknife. Has Snooper + Crysknife.
+	REQUIRE(t.getTreacheryCards().size() == 2);
+	const auto& tHand = t.getTreacheryCards();
+	CHECK(std::find(tHand.begin(), tHand.end(), "Lasgun") == tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Snooper") != tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Crysknife") != tHand.end());
+
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap can swap multiple cards with stable target hand size") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+
+	Player h(3, "Harkonnen");
+	h.addTreacheryCard("Karama");
+	h.addTreacheryCard("Weapon1");
+	h.addTreacheryCard("Weapon2");
+	h.addTreacheryCard("Weapon3");
+
+	Player t(0, "Atreides");
+	t.addTreacheryCard("Defense1");
+	t.addTreacheryCard("Defense2");
+	t.addTreacheryCard("Defense3");
+
+	// Two pairs: take target[0] ("Defense1") give "Weapon1";
+	//            take target[2] ("Weapon1" — just-given!) give "Weapon2".
+	// After first pair, target is [Defense2, Defense3, Weapon1]. So
+	// target[2] is "Weapon1", which is what we just gave. The blind swap
+	// happens to take it back. That's allowed by the rules.
+	int swapped = ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+		{0, 2}, {"Weapon1", "Weapon2"});
+	CHECK(swapped == 2);
+
+	// Harkonnen lost Karama + Weapon1 + Weapon2, gained Defense1 + Weapon1.
+	// Net hand: Weapon3, Defense1, Weapon1.
+	REQUIRE(h.getTreacheryCards().size() == 3);
+	const auto& hHand = h.getTreacheryCards();
+	CHECK(std::find(hHand.begin(), hHand.end(), "Karama") == hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Weapon3") != hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Defense1") != hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Weapon1") != hHand.end());
+
+	// Target lost Defense1 + Weapon1, gained Weapon1 + Weapon2.
+	// Net hand: Defense2, Defense3, Weapon2 (Weapon1 came in then went out).
+	REQUIRE(t.getTreacheryCards().size() == 3);
+	const auto& tHand = t.getTreacheryCards();
+	CHECK(std::find(tHand.begin(), tHand.end(), "Defense2") != tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Defense3") != tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Weapon2") != tHand.end());
+
+	CHECK(deck.discardSize() == 1);
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap refuses without Karama and never gives away the Karama itself") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+
+	// No Karama in hand.
+	{
+		Player h(3, "Harkonnen");
+		h.addTreacheryCard("Crysknife");
+		Player t(0, "Atreides");
+		t.addTreacheryCard("Lasgun");
+		CHECK(ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+			{0}, {"Crysknife"}) == 0);
+		REQUIRE(h.getTreacheryCards().size() == 1);
+		CHECK(h.getTreacheryCards()[0] == "Crysknife");
+		CHECK(deck.discardSize() == 0);
+	}
+
+	// giveBack contains "Karama" — must refuse without applying anything.
+	{
+		Player h(3, "Harkonnen");
+		h.addTreacheryCard("Karama");
+		h.addTreacheryCard("Crysknife");
+		Player t(0, "Atreides");
+		t.addTreacheryCard("Lasgun");
+		CHECK(ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+			{0}, {"Karama"}) == 0);
+		// Harkonnen and target untouched.
+		CHECK(h.getTreacheryCards().size() == 2);
+		CHECK(t.getTreacheryCards().size() == 1);
+		CHECK(deck.discardSize() == 0);
+	}
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap returns 0 on size mismatch") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player h(3, "Harkonnen");
+	h.addTreacheryCard("Karama");
+	h.addTreacheryCard("Crysknife");
+	Player t(0, "Atreides");
+	t.addTreacheryCard("Lasgun");
+
+	CHECK(ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+		{0, 1}, {"Crysknife"}) == 0);
+	// Karama still in hand — no apply happened.
+	const auto& hHand = h.getTreacheryCards();
+	CHECK(std::find(hHand.begin(), hHand.end(), "Karama") != hHand.end());
 }
 
 TEST_CASE("TreacheryDeck discard pile grows on discard and resets on initialize") {
