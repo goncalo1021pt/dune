@@ -41,7 +41,8 @@ Game::Game(int numPlayers, unsigned int seed, bool interactive, GameFeatureSetti
 	: turnNumber(0), currentPhase(gamePhase::STORM), turnOrder(), currentPlayerIndex(0),
 	  players(), playerCount(numPlayers), stormSector(0), lastStormCard(0),
 	  nextStormCard(0), hasNextStormCard(false), stormDeck(),
-	  playerTokenSectors(), _map(), rng(seed), spiceDeck(rng), beneGesseritCharity(false),
+	  playerTokenSectors(), _map(), rng(seed), initialSeed(seed),
+	  spiceDeck(rng), beneGesseritCharity(false),
 	  treacheryDeck(rng), traitorDeck(rng), phases(), interactiveMode(interactive),
 	  eventBus(),
 	  eventLogger(std::make_unique<BusBridgeLogger>(
