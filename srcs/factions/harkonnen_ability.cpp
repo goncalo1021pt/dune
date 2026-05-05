@@ -6,6 +6,7 @@
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 #include "interaction/interaction_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 #include <algorithm>
 #include <iostream>
 
@@ -113,6 +114,13 @@ void HarkonnenAbility::onBattleWon(PhaseContext& ctx, int opponentIndex) {
 			e.playerFaction = "Harkonnen";
 			ctx.logger->logEvent(e);
 		}
+		return;
+	}
+
+	// Karama-block opportunity: any opponent (including the freshly-defeated
+	// loser) may cancel this Capture use. Skipped if there's nothing to
+	// capture so we don't issue spurious prompts.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, harkonnenIndex, "Capture")) {
 		return;
 	}
 

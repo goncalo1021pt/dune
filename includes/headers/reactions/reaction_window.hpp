@@ -15,6 +15,11 @@
 //
 // PR 3 wires Weather Control, Hajr, Harkonnen capture, BG Voice, Atreides
 // peek, and Tleilaxu Ghola through these windows. PR 4 adds revival hooks.
+//
+// BeforeFactionAdvantage is a generic Karama-block window: the engine
+// raises it just before any faction advantage fires so opponents holding
+// a Karama (or, for BG, a worthless card playable as Karama) may interrupt
+// to cancel that single use of the advantage.
 enum class ReactionWindow {
 	BeforeStormMove,
 	AfterStormMove,
@@ -28,6 +33,7 @@ enum class ReactionWindow {
 	AfterBattleResolution,
 	BeforeRevival,
 	AfterRevival,
+	BeforeFactionAdvantage,
 	AnytimeSafe,
 	None,
 };

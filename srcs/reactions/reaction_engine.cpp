@@ -5,9 +5,11 @@
 #include "interaction/interaction_adapter.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "cards/treachery_deck.hpp"
 
 #include <algorithm>
 #include <random>
+#include <unordered_set>
 
 namespace {
 
@@ -24,7 +26,23 @@ ReactionWindow legalWindowForCard(const std::string& cardName) {
 	if (cardName == "Weather Control") return ReactionWindow::BeforeStormMove;
 	if (cardName == "Hajr")            return ReactionWindow::AfterMovement;
 	if (cardName == "Tleilaxu Ghola")  return ReactionWindow::AnytimeSafe;
+	if (cardName == "Karama")          return ReactionWindow::BeforeFactionAdvantage;
 	return ReactionWindow::None;
+}
+
+// Worthless treachery card names. Player only stores treachery card names,
+// not full treacheryCard structs, so we keep a name-based set for the BG
+// canUseWorthlessAsKarama path. Must stay in sync with treachery_deck.cpp's
+// WORTHLESS entries.
+const std::unordered_set<std::string>& worthlessCardNames() {
+	static const std::unordered_set<std::string> names = {
+		"Baliset",
+		"Jubba Cloak",
+		"Kulon",
+		"La La La",
+		"Trip to Gamont",
+	};
+	return names;
 }
 
 } // namespace
@@ -43,6 +61,7 @@ const char* reactionWindowName(ReactionWindow w) {
 		case ReactionWindow::AfterBattleResolution:  return "AfterBattleResolution";
 		case ReactionWindow::BeforeRevival:          return "BeforeRevival";
 		case ReactionWindow::AfterRevival:           return "AfterRevival";
+		case ReactionWindow::BeforeFactionAdvantage: return "BeforeFactionAdvantage";
 		case ReactionWindow::AnytimeSafe:            return "AnytimeSafe";
 		case ReactionWindow::None:                   return "None";
 	}
@@ -331,4 +350,76 @@ void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 				" revives " + detail);
 		}
 	}
+}
+
+// --- BeforeFactionAdvantage (Karama-block) -------------------------------
+
+std::string ReactionEngine::findKaramaCard(const Player& player) {
+	const auto& cards = player.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), "Karama") != cards.end()) {
+		return "Karama";
+	}
+	auto* ability = player.getFactionAbility();
+	if (ability && ability->canUseWorthlessAsKarama()) {
+		const auto& worthless = worthlessCardNames();
+		for (const auto& c : cards) {
+			if (worthless.count(c)) return c;
+		}
+	}
+	return "";
+}
+
+bool ReactionEngine::applyKaramaPlay(Player& player, TreacheryDeck& deck,
+	const std::string& cardName) {
+	const auto& cards = player.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), cardName) == cards.end()) {
+		return false;
+	}
+	player.removeTreacheryCard(cardName);
+	deck.discard(cardName);
+	return true;
+}
+
+bool ReactionEngine::dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,
+	const std::string& advantageLabel) {
+	if (ownerIdx < 0 || ownerIdx >= static_cast<int>(ctx.players.size())) {
+		return false;
+	}
+
+	WindowGuard guard(*this, ReactionWindow::BeforeFactionAdvantage);
+
+	// AI default: never spend a Karama. Preserves seed-42 regression and
+	// matches the conservative policy locked in elsewhere.
+	if (!ctx.adapter) return false;
+
+	for (int idx : ctx.turnOrder) {
+		if (idx == ownerIdx) continue;
+		Player* opp = ctx.players[idx];
+		std::string karamaCard = findKaramaCard(*opp);
+		if (karamaCard.empty()) continue;
+
+		DecisionRequest req;
+		req.kind = "yn";
+		req.actor_index = idx;
+		req.prompt = opp->getFactionName() + ", play " + karamaCard +
+			" as Karama to block " + ctx.players[ownerIdx]->getFactionName() +
+			"'s " + advantageLabel + "?";
+		auto resp = ctx.adapter->requestDecision(req);
+		bool play = resp && resp->valid && resp->payload_json == "y";
+		if (!play) continue;
+
+		if (!applyKaramaPlay(*opp, ctx.treacheryDeck, karamaCard)) continue;
+
+		logWindowOpen(ctx, ReactionWindow::BeforeFactionAdvantage,
+			opp->getFactionName() + " played " + karamaCard +
+			" as Karama vs " + ctx.players[ownerIdx]->getFactionName() +
+			"'s " + advantageLabel);
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Karama] " + opp->getFactionName() +
+				" blocks " + ctx.players[ownerIdx]->getFactionName() +
+				"'s " + advantageLabel + " (discard " + karamaCard + ")");
+		}
+		return true;
+	}
+	return false;
 }

@@ -29,6 +29,7 @@ struct treacheryCard {
 class TreacheryDeck {
 	private:
 		std::vector<treacheryCard> deck;
+		std::vector<std::string> discardPile;
 		size_t deckIndex;
 		std::mt19937& rng;
 		void reshuffle();
@@ -40,4 +41,11 @@ class TreacheryDeck {
 		treacheryCard drawCard();
 		int remainingCards() const;
 		int getTotalCards() const;
+
+		// Discard pile: cards consumed (e.g. Karama) land here by name.
+		// Player::treacheryCards stores names only, so the discard mirrors
+		// that — full treacheryCard structs are not preserved on discard.
+		void discard(const std::string& cardName);
+		int discardSize() const;
+		const std::vector<std::string>& getDiscardPile() const;
 };

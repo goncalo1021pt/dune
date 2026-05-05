@@ -3,6 +3,18 @@
 #include "reactions/reaction_window.hpp"
 #include "player.hpp"
 #include "leader.hpp"
+#include "cards/treachery_deck.hpp"
+#include "factions/faction_ability.hpp"
+#include <random>
+
+namespace {
+// Minimal stub for testing BG canUseWorthlessAsKarama path without pulling
+// in BeneGesseritAbility's full setup machinery.
+struct WorthlessAsKaramaAbility : public FactionAbility {
+	std::string getFactionName() const override { return "TestBG"; }
+	bool canUseWorthlessAsKarama() const override { return true; }
+};
+} // namespace
 
 // These tests lock in the legality contract: a reaction card is legally
 // playable iff its window is currently open. AnytimeSafe is satisfied by
@@ -182,6 +194,98 @@ TEST_CASE("applyGholaForceRevive is a no-op when nothing is destroyed and keeps 
 	CHECK(ReactionEngine::applyGholaForceRevive(p, 3) == 0);
 	REQUIRE(p.getTreacheryCards().size() == 1);
 	CHECK(p.getTreacheryCards()[0] == "Tleilaxu Ghola");
+}
+
+TEST_CASE("Karama is legal only inside BeforeFactionAdvantage") {
+	ReactionEngine engine;
+	{
+		ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeFactionAdvantage);
+		CHECK(engine.isReactionLegalNow("Karama"));
+	}
+	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+
+	// Karama is not legal in unrelated windows.
+	ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeBattlePlanReveal);
+	CHECK_FALSE(engine.isReactionLegalNow("Karama"));
+}
+
+TEST_CASE("Tleilaxu Ghola is also legal during a BeforeFactionAdvantage window") {
+	ReactionEngine engine;
+	ReactionEngine::WindowGuard g(engine, ReactionWindow::BeforeFactionAdvantage);
+	CHECK(engine.isReactionLegalNow("Tleilaxu Ghola"));
+}
+
+TEST_CASE("reactionWindowName covers BeforeFactionAdvantage") {
+	CHECK(std::string(reactionWindowName(ReactionWindow::BeforeFactionAdvantage))
+		== "BeforeFactionAdvantage");
+}
+
+TEST_CASE("findKaramaCard returns Karama when present") {
+	Player p(0, "Atreides");
+	p.addTreacheryCard("Karama");
+	CHECK(ReactionEngine::findKaramaCard(p) == "Karama");
+}
+
+TEST_CASE("findKaramaCard returns empty for a non-BG hand without Karama") {
+	Player p(0, "Atreides");
+	p.addTreacheryCard("Crysknife");
+	p.addTreacheryCard("Baliset");  // worthless, but Atreides cannot use as Karama
+	CHECK(ReactionEngine::findKaramaCard(p) == "");
+}
+
+TEST_CASE("findKaramaCard returns first worthless when BG holds no Karama") {
+	Player p(5, "Bene Gesserit");
+	p.setFactionAbility(std::make_unique<WorthlessAsKaramaAbility>());
+	p.addTreacheryCard("Crysknife");
+	p.addTreacheryCard("Kulon");  // worthless — first one wins
+	p.addTreacheryCard("Baliset");
+	CHECK(ReactionEngine::findKaramaCard(p) == "Kulon");
+}
+
+TEST_CASE("findKaramaCard prefers a real Karama over worthless for BG") {
+	Player p(5, "Bene Gesserit");
+	p.setFactionAbility(std::make_unique<WorthlessAsKaramaAbility>());
+	p.addTreacheryCard("Kulon");
+	p.addTreacheryCard("Karama");
+	CHECK(ReactionEngine::findKaramaCard(p) == "Karama");
+}
+
+TEST_CASE("applyKaramaPlay removes the card from the hand and pushes to the deck discard pile") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(0, "Atreides");
+	p.addTreacheryCard("Karama");
+	REQUIRE(deck.discardSize() == 0);
+
+	CHECK(ReactionEngine::applyKaramaPlay(p, deck, "Karama"));
+	CHECK(p.getTreacheryCards().empty());
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyKaramaPlay returns false when the named card is not in hand") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player p(0, "Atreides");
+	CHECK_FALSE(ReactionEngine::applyKaramaPlay(p, deck, "Karama"));
+	CHECK(deck.discardSize() == 0);
+}
+
+TEST_CASE("TreacheryDeck discard pile grows on discard and resets on initialize") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	deck.discard("Karama");
+	deck.discard("Baliset");
+	CHECK(deck.discardSize() == 2);
+	REQUIRE(deck.getDiscardPile().size() == 2);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+	CHECK(deck.getDiscardPile()[1] == "Baliset");
+
+	deck.initialize();
+	CHECK(deck.discardSize() == 0);
 }
 
 TEST_CASE("applyGholaForceRevive without the card returns 0") {

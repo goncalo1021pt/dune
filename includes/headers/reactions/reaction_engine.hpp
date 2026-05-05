@@ -6,6 +6,7 @@
 
 struct PhaseContext;
 class Player;
+class TreacheryDeck;
 
 // ReactionEngine consolidates the ad-hoc reaction sites scattered across
 // phase code under a uniform window-dispatch model.
@@ -80,6 +81,26 @@ public:
 	// Player::reviveUnits). Removes the card from the player's hand iff at
 	// least one force is revived. Returns the number of forces revived.
 	static int applyGholaForceRevive(Player& player, int requested);
+
+	// Open a BeforeFactionAdvantage window and offer each opponent (other
+	// than ownerIdx) the chance to play a Karama (or, for BG, a worthless
+	// card as Karama) to cancel the advantage. Returns true if any opponent
+	// blocked the advantage. AI default (no adapter) declines and returns
+	// false. The first accepting opponent in turn order resolves the window.
+	bool dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,
+		const std::string& advantageLabel);
+
+	// Returns the name of the card a player would consume to play a Karama,
+	// or "" if they hold none. Honors BG canUseWorthlessAsKarama: a real
+	// Karama in hand always wins; otherwise, for a BG-eligible player, the
+	// first worthless card in hand stands in.
+	static std::string findKaramaCard(const Player& player);
+
+	// Apply a Karama play: remove the named card from the player's hand and
+	// push it to the deck's discard pile. Returns false if the card is not
+	// in hand (no state change).
+	static bool applyKaramaPlay(Player& player, TreacheryDeck& deck,
+		const std::string& cardName);
 
 	// RAII helper: enters a window for the duration of a scope. Restores
 	// the previous window state on exit so nested dispatches behave

@@ -3,11 +3,12 @@
 #include <iostream>
 
 TreacheryDeck::TreacheryDeck(std::mt19937& rng_)
-	: deck(), deckIndex(0), rng(rng_) {
+	: deck(), discardPile(), deckIndex(0), rng(rng_) {
 }
 
 void TreacheryDeck::initialize() {
 	deck.clear();
+	discardPile.clear();
 	deckIndex = 0;
 
 	// All 33 Dune treachery cards with their types and descriptions
@@ -79,4 +80,16 @@ int TreacheryDeck::remainingCards() const {
 
 int TreacheryDeck::getTotalCards() const {
 	return deck.size();
+}
+
+void TreacheryDeck::discard(const std::string& cardName) {
+	discardPile.push_back(cardName);
+}
+
+int TreacheryDeck::discardSize() const {
+	return static_cast<int>(discardPile.size());
+}
+
+const std::vector<std::string>& TreacheryDeck::getDiscardPile() const {
+	return discardPile;
 }
