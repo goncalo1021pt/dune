@@ -428,6 +428,12 @@ BeneVoiceState prepareBeneVoiceForBattle(PhaseContext& ctx, int attackerIdx, int
 		}
 	}
 
+	// Karama-block opportunity: any opponent may cancel this Voice use.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, voice.beneIdx, "Voice")) {
+		voice.active = false;
+		return voice;
+	}
+
 	static const std::vector<std::string> voiceOptions = {
 		"PLAY poison weapon", "DON'T PLAY poison weapon",
 		"PLAY projectile weapon", "DON'T PLAY projectile weapon",
@@ -523,19 +529,30 @@ BattleElementToPeek askAtreidesWhichElementToPeek(PhaseContext& ctx, const Playe
 AtreidesPeekState prepareAtreidesPeekForBattle(PhaseContext& ctx, int attackerIdx, int defenderIdx,
 	Player* attacker, Player* defender) {
 	AtreidesPeekState state;
+	int atrIdx = -1;
+	int oppIdx = -1;
+	Player* atrPlayer = nullptr;
+	Player* oppPlayer = nullptr;
 	if (attacker->getFactionName() == "Atreides") {
-		state.active = true;
-		state.atreidesIdx = attackerIdx;
-		state.opponentIdx = defenderIdx;
-		state.element = askAtreidesWhichElementToPeek(ctx, attacker, defender);
+		atrIdx = attackerIdx; oppIdx = defenderIdx;
+		atrPlayer = attacker; oppPlayer = defender;
 	} else if (defender->getFactionName() == "Atreides") {
-		state.active = true;
-		state.atreidesIdx = defenderIdx;
-		state.opponentIdx = attackerIdx;
-		state.element = askAtreidesWhichElementToPeek(ctx, defender, attacker);
+		atrIdx = defenderIdx; oppIdx = attackerIdx;
+		atrPlayer = defender; oppPlayer = attacker;
+	}
+	if (!atrPlayer) return state;
+
+	// Karama-block opportunity: any opponent may cancel this Prescience use.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, atrIdx, "Prescience")) {
+		return state;
 	}
 
-	if (state.active && ctx.logger) {
+	state.active = true;
+	state.atreidesIdx = atrIdx;
+	state.opponentIdx = oppIdx;
+	state.element = askAtreidesWhichElementToPeek(ctx, atrPlayer, oppPlayer);
+
+	if (ctx.logger) {
 		ctx.logger->logDebug("[Atreides Prescience] Locked question: " + battleElementToString(state.element));
 	}
 
