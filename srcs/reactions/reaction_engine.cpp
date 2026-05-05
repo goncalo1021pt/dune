@@ -498,6 +498,120 @@ void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 		}
 		break;  // Only one Fremen in a game.
 	}
+
+	// --- Harkonnen advanced Karama: blind hand-swap ---
+	for (int idx : ctx.turnOrder) {
+		Player* harkonnen = ctx.players[idx];
+		auto* ability = harkonnen->getFactionAbility();
+		if (!ability || ability->getFactionName() != "Harkonnen") continue;
+		if (!playerHasCard(harkonnen, "Karama")) continue;
+
+		int swappable = 0;
+		for (const auto& c : harkonnen->getTreacheryCards()) {
+			if (c != "Karama") ++swappable;
+		}
+		if (swappable <= 0) continue;
+
+		// Build candidate target list (any opponent with at least one card).
+		std::vector<int> candIdx;
+		std::vector<std::string> candNames;
+		for (int t : ctx.turnOrder) {
+			if (t == idx) continue;
+			if (ctx.players[t]->getTreacheryCards().empty()) continue;
+			candIdx.push_back(t);
+			candNames.push_back(ctx.players[t]->getFactionName());
+		}
+		if (candIdx.empty()) continue;
+
+		DecisionRequest ynReq;
+		ynReq.kind = "yn";
+		ynReq.actor_index = idx;
+		ynReq.prompt = harkonnen->getFactionName() +
+			", play Karama for a blind hand-swap with another player?";
+		auto ynResp = ctx.adapter->requestDecision(ynReq);
+		if (!ynResp || !ynResp->valid || ynResp->payload_json != "y") continue;
+
+		DecisionRequest tReq;
+		tReq.kind = "select";
+		tReq.actor_index = idx;
+		tReq.prompt = "Choose a player to swap with:";
+		tReq.options = candNames;
+		auto tResp = ctx.adapter->requestDecision(tReq);
+		if (!tResp || !tResp->valid || tResp->payload_json.empty()) continue;
+		int targetIdx = -1;
+		for (std::size_t k = 0; k < candNames.size(); ++k) {
+			if (candNames[k] == tResp->payload_json) { targetIdx = candIdx[k]; break; }
+		}
+		if (targetIdx < 0) continue;
+
+		Player* target = ctx.players[targetIdx];
+		int targetSize = static_cast<int>(target->getTreacheryCards().size());
+		int maxSwap = std::min(swappable, targetSize);
+		if (maxSwap <= 0) continue;
+
+		DecisionRequest cReq;
+		cReq.kind = "int";
+		cReq.actor_index = idx;
+		cReq.prompt = "How many cards to swap (1-" + std::to_string(maxSwap) + ")?";
+		cReq.int_min = 1;
+		cReq.int_max = maxSwap;
+		auto cResp = ctx.adapter->requestDecision(cReq);
+		if (!cResp || !cResp->valid) continue;
+		int count = 0;
+		try { count = std::stoi(cResp->payload_json); } catch (...) {}
+		if (count <= 0) continue;
+
+		// Pick which cards to give. Pre-select all 'count' cards before
+		// applying so the player sees a stable choice list each iteration.
+		std::vector<std::string> giveBack;
+		bool aborted = false;
+		for (int i = 0; i < count; ++i) {
+			std::vector<std::string> hand = harkonnen->getTreacheryCards();
+			for (const auto& promised : giveBack) {
+				auto it = std::find(hand.begin(), hand.end(), promised);
+				if (it != hand.end()) hand.erase(it);
+			}
+			std::vector<std::string> options;
+			for (const auto& c : hand) {
+				if (c != "Karama") options.push_back(c);
+			}
+			if (options.empty()) { aborted = true; break; }
+
+			DecisionRequest gReq;
+			gReq.kind = "select";
+			gReq.actor_index = idx;
+			gReq.prompt = "Choose card #" + std::to_string(i + 1) +
+				" to give to " + target->getFactionName() + ":";
+			gReq.options = options;
+			auto gResp = ctx.adapter->requestDecision(gReq);
+			if (!gResp || !gResp->valid || gResp->payload_json.empty()) {
+				aborted = true; break;
+			}
+			giveBack.push_back(gResp->payload_json);
+		}
+		if (aborted) continue;
+
+		// Generate random take indices. Hand size is stable across iterations
+		// (one card removed and one added per pair), so all indices in
+		// [0, targetSize) remain valid.
+		std::vector<int> takeIndices;
+		std::uniform_int_distribution<int> dist(0, targetSize - 1);
+		for (int i = 0; i < count; ++i) takeIndices.push_back(dist(ctx.rng));
+
+		int swapped = applyHarkonnenKaramaHandSwap(*harkonnen, *target,
+			ctx.treacheryDeck, takeIndices, giveBack);
+		if (swapped <= 0) continue;
+
+		logWindowOpen(ctx, ReactionWindow::AnytimeSafe,
+			harkonnen->getFactionName() + " played Karama to blind-swap " +
+			std::to_string(swapped) + " cards with " + target->getFactionName());
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Karama:Hand Swap] " + harkonnen->getFactionName() +
+				" blind-swaps " + std::to_string(swapped) + " cards with " +
+				target->getFactionName());
+		}
+		break;  // Only one Harkonnen in a game.
+	}
 }
 
 // --- BeforeFactionAdvantage (Karama-block) -------------------------------
@@ -573,6 +687,48 @@ bool ReactionEngine::applyFremenKaramaSandworm(PhaseContext& ctx, Player& fremen
 
 	SpiceBlowPhase::resolveWormOnTerritory(territoryName, ctx.map, &ctx);
 	return true;
+}
+
+int ReactionEngine::applyHarkonnenKaramaHandSwap(Player& harkonnen, Player& target,
+	TreacheryDeck& deck,
+	const std::vector<int>& takeIndices,
+	const std::vector<std::string>& giveBack) {
+
+	const auto& hCards = harkonnen.getTreacheryCards();
+	if (std::find(hCards.begin(), hCards.end(), "Karama") == hCards.end()) {
+		return 0;
+	}
+	if (takeIndices.size() != giveBack.size()) return 0;
+
+	int swapped = 0;
+	for (std::size_t i = 0; i < takeIndices.size(); ++i) {
+		const auto& tCards = target.getTreacheryCards();
+		if (tCards.empty()) break;
+		int idx = takeIndices[i];
+		if (idx < 0 || idx >= static_cast<int>(tCards.size())) break;
+
+		// The Karama itself is being discarded — never give it away.
+		if (giveBack[i] == "Karama") break;
+		const auto& hCardsNow = harkonnen.getTreacheryCards();
+		if (std::find(hCardsNow.begin(), hCardsNow.end(), giveBack[i]) == hCardsNow.end()) break;
+
+		// Take target[idx] -> harkonnen.
+		std::string takenName = tCards[idx];
+		target.removeTreacheryCard(takenName);
+		harkonnen.addTreacheryCard(takenName);
+
+		// Give giveBack[i] -> target.
+		harkonnen.removeTreacheryCard(giveBack[i]);
+		target.addTreacheryCard(giveBack[i]);
+
+		++swapped;
+	}
+
+	if (swapped > 0) {
+		harkonnen.removeTreacheryCard("Karama");
+		deck.discard("Karama");
+	}
+	return swapped;
 }
 
 bool ReactionEngine::dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,

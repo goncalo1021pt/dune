@@ -5,6 +5,7 @@
 #include "leader.hpp"
 #include "cards/treachery_deck.hpp"
 #include "factions/faction_ability.hpp"
+#include <algorithm>
 #include <random>
 
 namespace {
@@ -382,6 +383,140 @@ TEST_CASE("applyEmperorKaramaForceRevive is a no-op without Karama or with nothi
 	REQUIRE(q.getTreacheryCards().size() == 1);
 	CHECK(q.getTreacheryCards()[0] == "Karama");
 	CHECK(deck.discardSize() == 0);
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap performs a 1-for-1 blind swap and discards Karama") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+
+	Player h(3, "Harkonnen");
+	h.addTreacheryCard("Karama");
+	h.addTreacheryCard("Crysknife");
+	h.addTreacheryCard("Shield");
+
+	Player t(0, "Atreides");
+	t.addTreacheryCard("Lasgun");
+	t.addTreacheryCard("Snooper");
+
+	// Take target index 0 ("Lasgun"), give "Crysknife".
+	int swapped = ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+		{0}, {"Crysknife"});
+	CHECK(swapped == 1);
+
+	// Harkonnen lost Karama + Crysknife, gained Lasgun. Has Shield + Lasgun.
+	REQUIRE(h.getTreacheryCards().size() == 2);
+	const auto& hHand = h.getTreacheryCards();
+	CHECK(std::find(hHand.begin(), hHand.end(), "Karama") == hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Crysknife") == hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Lasgun") != hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Shield") != hHand.end());
+
+	// Target lost Lasgun, gained Crysknife. Has Snooper + Crysknife.
+	REQUIRE(t.getTreacheryCards().size() == 2);
+	const auto& tHand = t.getTreacheryCards();
+	CHECK(std::find(tHand.begin(), tHand.end(), "Lasgun") == tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Snooper") != tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Crysknife") != tHand.end());
+
+	REQUIRE(deck.discardSize() == 1);
+	CHECK(deck.getDiscardPile()[0] == "Karama");
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap can swap multiple cards with stable target hand size") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+
+	Player h(3, "Harkonnen");
+	h.addTreacheryCard("Karama");
+	h.addTreacheryCard("Weapon1");
+	h.addTreacheryCard("Weapon2");
+	h.addTreacheryCard("Weapon3");
+
+	Player t(0, "Atreides");
+	t.addTreacheryCard("Defense1");
+	t.addTreacheryCard("Defense2");
+	t.addTreacheryCard("Defense3");
+
+	// Two pairs: take target[0] ("Defense1") give "Weapon1";
+	//            take target[2] ("Weapon1" — just-given!) give "Weapon2".
+	// After first pair, target is [Defense2, Defense3, Weapon1]. So
+	// target[2] is "Weapon1", which is what we just gave. The blind swap
+	// happens to take it back. That's allowed by the rules.
+	int swapped = ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+		{0, 2}, {"Weapon1", "Weapon2"});
+	CHECK(swapped == 2);
+
+	// Harkonnen lost Karama + Weapon1 + Weapon2, gained Defense1 + Weapon1.
+	// Net hand: Weapon3, Defense1, Weapon1.
+	REQUIRE(h.getTreacheryCards().size() == 3);
+	const auto& hHand = h.getTreacheryCards();
+	CHECK(std::find(hHand.begin(), hHand.end(), "Karama") == hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Weapon3") != hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Defense1") != hHand.end());
+	CHECK(std::find(hHand.begin(), hHand.end(), "Weapon1") != hHand.end());
+
+	// Target lost Defense1 + Weapon1, gained Weapon1 + Weapon2.
+	// Net hand: Defense2, Defense3, Weapon2 (Weapon1 came in then went out).
+	REQUIRE(t.getTreacheryCards().size() == 3);
+	const auto& tHand = t.getTreacheryCards();
+	CHECK(std::find(tHand.begin(), tHand.end(), "Defense2") != tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Defense3") != tHand.end());
+	CHECK(std::find(tHand.begin(), tHand.end(), "Weapon2") != tHand.end());
+
+	CHECK(deck.discardSize() == 1);
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap refuses without Karama and never gives away the Karama itself") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+
+	// No Karama in hand.
+	{
+		Player h(3, "Harkonnen");
+		h.addTreacheryCard("Crysknife");
+		Player t(0, "Atreides");
+		t.addTreacheryCard("Lasgun");
+		CHECK(ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+			{0}, {"Crysknife"}) == 0);
+		REQUIRE(h.getTreacheryCards().size() == 1);
+		CHECK(h.getTreacheryCards()[0] == "Crysknife");
+		CHECK(deck.discardSize() == 0);
+	}
+
+	// giveBack contains "Karama" — must refuse without applying anything.
+	{
+		Player h(3, "Harkonnen");
+		h.addTreacheryCard("Karama");
+		h.addTreacheryCard("Crysknife");
+		Player t(0, "Atreides");
+		t.addTreacheryCard("Lasgun");
+		CHECK(ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+			{0}, {"Karama"}) == 0);
+		// Harkonnen and target untouched.
+		CHECK(h.getTreacheryCards().size() == 2);
+		CHECK(t.getTreacheryCards().size() == 1);
+		CHECK(deck.discardSize() == 0);
+	}
+}
+
+TEST_CASE("applyHarkonnenKaramaHandSwap returns 0 on size mismatch") {
+	std::mt19937 rng(42);
+	TreacheryDeck deck(rng);
+	deck.initialize();
+	Player h(3, "Harkonnen");
+	h.addTreacheryCard("Karama");
+	h.addTreacheryCard("Crysknife");
+	Player t(0, "Atreides");
+	t.addTreacheryCard("Lasgun");
+
+	CHECK(ReactionEngine::applyHarkonnenKaramaHandSwap(h, t, deck,
+		{0, 1}, {"Crysknife"}) == 0);
+	// Karama still in hand — no apply happened.
+	const auto& hHand = h.getTreacheryCards();
+	CHECK(std::find(hHand.begin(), hHand.end(), "Karama") != hHand.end());
 }
 
 TEST_CASE("TreacheryDeck discard pile grows on discard and resets on initialize") {

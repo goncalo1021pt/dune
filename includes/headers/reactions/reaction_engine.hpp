@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 #include "reactions/reaction_window.hpp"
 
 struct PhaseContext;
@@ -125,6 +126,20 @@ public:
 	// territory is not desert.
 	static bool applyFremenKaramaSandworm(PhaseContext& ctx, Player& fremen,
 		TreacheryDeck& deck, const std::string& territoryName);
+
+	// Apply Harkonnen's advanced Karama hand-swap: take the cards at
+	// 'takeIndices' from 'target's hand (each index is read against the
+	// live target hand at that iteration; sizes stay constant so all
+	// indices in [0, original size) remain valid) and exchange each for
+	// the named card in 'giveBack' from 'harkonnen's hand. Discards the
+	// "Karama" card iff at least one pair was actually swapped. Returns
+	// the number of pairs swapped. Refuses if Harkonnen does not hold
+	// "Karama" or any giveBack name is "Karama" (the Karama itself is
+	// discarded, not given).
+	static int applyHarkonnenKaramaHandSwap(Player& harkonnen, Player& target,
+		TreacheryDeck& deck,
+		const std::vector<int>& takeIndices,
+		const std::vector<std::string>& giveBack);
 
 	// RAII helper: enters a window for the duration of a scope. Restores
 	// the previous window state on exit so nested dispatches behave
