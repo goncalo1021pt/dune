@@ -190,6 +190,71 @@ void ReactionEngine::dispatchBeforeBattlePlanReveal(PhaseContext& ctx,
 
 // --- AnytimeSafe checkpoint (Tleilaxu Ghola) -----------------------------
 
+bool ReactionEngine::applyGholaLeaderRevive(Player& player, std::size_t deadIndex) {
+	const auto& cards = player.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), "Tleilaxu Ghola") == cards.end()) {
+		return false;
+	}
+	if (deadIndex >= player.getDeadLeaders().size()) return false;
+	player.reviveLeader(deadIndex);
+	player.removeTreacheryCard("Tleilaxu Ghola");
+	return true;
+}
+
+int ReactionEngine::applyGholaForceRevive(Player& player, int requested) {
+	const auto& cards = player.getTreacheryCards();
+	if (std::find(cards.begin(), cards.end(), "Tleilaxu Ghola") == cards.end()) {
+		return 0;
+	}
+	int totalDestroyed = player.getUnitsDestroyed() + player.getEliteUnitsDestroyed();
+	int n = std::min(requested, 5);
+	n = std::min(n, totalDestroyed);
+	if (n <= 0) return 0;
+	// Player::reviveUnits already revives normals first, then elites.
+	player.reviveUnits(n);
+	player.removeTreacheryCard("Tleilaxu Ghola");
+	return n;
+}
+
+namespace {
+
+// Choose force count for Ghola via adapter int prompt; returns 0 if the
+// player declines or the adapter is unavailable.
+int promptGholaForceCount(PhaseContext& ctx, int playerIndex, int maxAvailable) {
+	if (!ctx.adapter) return 0;
+	int upper = std::min(5, maxAvailable);
+	if (upper <= 0) return 0;
+	DecisionRequest req;
+	req.kind = "int";
+	req.actor_index = playerIndex;
+	req.prompt = "How many forces to revive (1-" + std::to_string(upper) + ")? ";
+	req.int_min = 1;
+	req.int_max = upper;
+	auto resp = ctx.adapter->requestDecision(req);
+	if (!resp || !resp->valid) return 0;
+	try { return std::stoi(resp->payload_json); } catch (...) { return 0; }
+}
+
+// Choose dead leader index via adapter select prompt; returns -1 on cancel.
+int promptGholaLeaderIndex(PhaseContext& ctx, int playerIndex, const Player& player) {
+	if (!ctx.adapter) return -1;
+	const auto& dead = player.getDeadLeaders();
+	if (dead.empty()) return -1;
+	DecisionRequest req;
+	req.kind = "select";
+	req.actor_index = playerIndex;
+	req.prompt = "Choose a leader to revive:";
+	for (const auto& l : dead) req.options.push_back(l.name);
+	auto resp = ctx.adapter->requestDecision(req);
+	if (!resp || !resp->valid || resp->payload_json.empty()) return -1;
+	for (std::size_t i = 0; i < dead.size(); ++i) {
+		if (dead[i].name == resp->payload_json) return static_cast<int>(i);
+	}
+	return -1;
+}
+
+} // namespace
+
 void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 	const std::string& checkpointLabel) {
 	bool anyHolder = false;
@@ -199,10 +264,71 @@ void ReactionEngine::dispatchAnytimeSafe(PhaseContext& ctx,
 	if (!anyHolder) return;
 
 	WindowGuard guard(*this, ReactionWindow::AnytimeSafe);
-
-	// Full Ghola revival mechanics are deferred. The window is open here
-	// (so isReactionLegalNow("Tleilaxu Ghola") returns true), but no prompt
-	// is issued yet — interactive Ghola play lands alongside the revival API.
-	(void)ctx;
 	(void)checkpointLabel;
+
+	// AI default (no adapter): never play Ghola — preserves seed-42 regression
+	// and matches the conservative "do nothing" policy used elsewhere.
+	if (!ctx.adapter) return;
+
+	for (int idx : ctx.turnOrder) {
+		Player* player = ctx.players[idx];
+		if (!playerHasCard(player, "Tleilaxu Ghola")) continue;
+
+		bool hasDeadLeader = !player->getDeadLeaders().empty();
+		int destroyedForces = player->getUnitsDestroyed() + player->getEliteUnitsDestroyed();
+		if (!hasDeadLeader && destroyedForces <= 0) continue;
+
+		// Ask whether to play.
+		DecisionRequest ynReq;
+		ynReq.kind = "yn";
+		ynReq.actor_index = idx;
+		ynReq.prompt = player->getFactionName() +
+			", play Tleilaxu Ghola for an extra revival?";
+		auto ynResp = ctx.adapter->requestDecision(ynReq);
+		bool play = ynResp && ynResp->valid && ynResp->payload_json == "y";
+		if (!play) continue;
+
+		// Choose target type. Only offer "leader" if there is a dead leader,
+		// only offer "forces" if there are destroyed units. Both can be true.
+		std::string choice;
+		if (hasDeadLeader && destroyedForces > 0) {
+			DecisionRequest selReq;
+			selReq.kind = "select";
+			selReq.actor_index = idx;
+			selReq.prompt = "Revive a leader or forces?";
+			selReq.options = {"leader", "forces"};
+			auto selResp = ctx.adapter->requestDecision(selReq);
+			if (!selResp || !selResp->valid) continue;
+			choice = selResp->payload_json;
+		} else if (hasDeadLeader) {
+			choice = "leader";
+		} else {
+			choice = "forces";
+		}
+
+		bool applied = false;
+		std::string detail;
+		if (choice == "leader") {
+			int deadIdx = promptGholaLeaderIndex(ctx, idx, *player);
+			if (deadIdx < 0) continue;
+			std::string leaderName = player->getDeadLeaders()[deadIdx].name;
+			applied = applyGholaLeaderRevive(*player, static_cast<std::size_t>(deadIdx));
+			if (applied) detail = "leader " + leaderName;
+		} else if (choice == "forces") {
+			int requested = promptGholaForceCount(ctx, idx, destroyedForces);
+			if (requested <= 0) continue;
+			int revived = applyGholaForceRevive(*player, requested);
+			applied = revived > 0;
+			if (applied) detail = std::to_string(revived) + " forces";
+		}
+
+		if (!applied) continue;
+
+		logWindowOpen(ctx, ReactionWindow::AnytimeSafe,
+			player->getFactionName() + " played Tleilaxu Ghola (" + detail + ")");
+		if (ctx.logger) {
+			ctx.logger->logDebug("[Ghola] " + player->getFactionName() +
+				" revives " + detail);
+		}
+	}
 }

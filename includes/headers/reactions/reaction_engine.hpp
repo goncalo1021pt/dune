@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include "reactions/reaction_window.hpp"
 
 struct PhaseContext;
+class Player;
 
 // ReactionEngine consolidates the ad-hoc reaction sites scattered across
 // phase code under a uniform window-dispatch model.
@@ -61,11 +63,23 @@ public:
 		int defenderIdx);
 
 	// AnytimeSafe checkpoint: between phases, between players in a phase,
-	// after BATTLE_RESOLVED / LEADER_KILLED. Currently implements legality
-	// only — Tleilaxu Ghola revival mechanics are tracked as a follow-up.
-	// The window is opened only when at least one player still holds the
-	// "Tleilaxu Ghola" card, to keep AI runs free of pointless prompts.
+	// after BATTLE_RESOLVED / LEADER_KILLED. Iterates turn order and offers
+	// each "Tleilaxu Ghola" holder the chance to play it for an extra free
+	// revival (1 leader OR 1-5 forces from the tanks, on top of normal
+	// revival). The window is opened only when at least one player still
+	// holds the card, to keep AI runs free of pointless prompts.
 	void dispatchAnytimeSafe(PhaseContext& ctx, const std::string& checkpointLabel);
+
+	// Apply a Tleilaxu Ghola leader revival. Removes the card from the
+	// player's hand and revives the dead leader at deadIndex. Returns false
+	// if the player does not hold the card or deadIndex is out of range.
+	static bool applyGholaLeaderRevive(Player& player, std::size_t deadIndex);
+
+	// Apply a Tleilaxu Ghola force revival. Revives up to min(requested, 5,
+	// total destroyed) forces (normals first, then elites, mirroring
+	// Player::reviveUnits). Removes the card from the player's hand iff at
+	// least one force is revived. Returns the number of forces revived.
+	static int applyGholaForceRevive(Player& player, int requested);
 
 	// RAII helper: enters a window for the duration of a scope. Restores
 	// the previous window state on exit so nested dispatches behave

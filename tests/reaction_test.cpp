@@ -1,6 +1,8 @@
 #include "doctest/doctest.h"
 #include "reactions/reaction_engine.hpp"
 #include "reactions/reaction_window.hpp"
+#include "player.hpp"
+#include "leader.hpp"
 
 // These tests lock in the legality contract: a reaction card is legally
 // playable iff its window is currently open. AnytimeSafe is satisfied by
@@ -96,6 +98,100 @@ TEST_CASE("nested windows restore the outer window on exit") {
 		CHECK(engine.currentWindow() == ReactionWindow::AfterBattleResolution);
 	}
 	CHECK(engine.currentWindow() == ReactionWindow::None);
+}
+
+TEST_CASE("applyGholaLeaderRevive moves a dead leader back to alive and discards the card") {
+	Player p(0, "Atreides");
+	p.addTreacheryCard("Tleilaxu Ghola");
+	p.addLeader(Leader("Thufir Hawat", 5));
+	p.killLeader(0);
+	REQUIRE(p.getDeadLeaders().size() == 1);
+	REQUIRE(p.getAliveLeaders().empty());
+
+	CHECK(ReactionEngine::applyGholaLeaderRevive(p, 0));
+	CHECK(p.getDeadLeaders().empty());
+	REQUIRE(p.getAliveLeaders().size() == 1);
+	CHECK(p.getAliveLeaders()[0].name == "Thufir Hawat");
+	// Card was consumed.
+	CHECK(p.getTreacheryCards().empty());
+}
+
+TEST_CASE("applyGholaLeaderRevive refuses without the card and refuses out-of-range index") {
+	Player p(0, "Atreides");
+	p.addLeader(Leader("Gurney", 4));
+	p.killLeader(0);
+
+	// No Ghola card in hand.
+	CHECK_FALSE(ReactionEngine::applyGholaLeaderRevive(p, 0));
+	CHECK(p.getDeadLeaders().size() == 1);
+
+	p.addTreacheryCard("Tleilaxu Ghola");
+	// Index out of range — card must NOT be consumed.
+	CHECK_FALSE(ReactionEngine::applyGholaLeaderRevive(p, 5));
+	CHECK(p.getDeadLeaders().size() == 1);
+	REQUIRE(p.getTreacheryCards().size() == 1);
+	CHECK(p.getTreacheryCards()[0] == "Tleilaxu Ghola");
+}
+
+TEST_CASE("applyGholaForceRevive caps at 5, caps at total destroyed, normals first") {
+	Player p(0, "Harkonnen");
+	p.addTreacheryCard("Tleilaxu Ghola");
+	p.setUnitsReserve(0);
+	p.setEliteUnitsReserve(0);
+	p.deployUnits(0); // no-op, just keep deployed at 0
+	// Stage 7 destroyed normal + 2 destroyed elite by deploying then destroying.
+	p.setUnitsReserve(7);
+	p.setEliteUnitsReserve(2);
+	p.destroyUnits(7);
+	p.destroyEliteUnits(2);
+	REQUIRE(p.getUnitsDestroyed() == 7);
+	REQUIRE(p.getEliteUnitsDestroyed() == 2);
+
+	// Request 7 — capped to 5. All five come from normals (normals first).
+	CHECK(ReactionEngine::applyGholaForceRevive(p, 7) == 5);
+	CHECK(p.getUnitsReserve() == 5);
+	CHECK(p.getEliteUnitsReserve() == 0);
+	CHECK(p.getUnitsDestroyed() == 2);
+	CHECK(p.getEliteUnitsDestroyed() == 2);
+	CHECK(p.getTreacheryCards().empty());
+}
+
+TEST_CASE("applyGholaForceRevive spills into elites when normals run out") {
+	Player p(0, "Atreides");
+	p.addTreacheryCard("Tleilaxu Ghola");
+	p.setUnitsReserve(2);
+	p.setEliteUnitsReserve(3);
+	p.destroyUnits(2);
+	p.destroyEliteUnits(3);
+	REQUIRE(p.getUnitsDestroyed() == 2);
+	REQUIRE(p.getEliteUnitsDestroyed() == 3);
+
+	CHECK(ReactionEngine::applyGholaForceRevive(p, 4) == 4);
+	CHECK(p.getUnitsReserve() == 2);
+	CHECK(p.getEliteUnitsReserve() == 2);
+	CHECK(p.getUnitsDestroyed() == 0);
+	CHECK(p.getEliteUnitsDestroyed() == 1);
+}
+
+TEST_CASE("applyGholaForceRevive is a no-op when nothing is destroyed and keeps the card") {
+	Player p(0, "Atreides");
+	p.addTreacheryCard("Tleilaxu Ghola");
+	REQUIRE(p.getUnitsDestroyed() == 0);
+	REQUIRE(p.getEliteUnitsDestroyed() == 0);
+
+	CHECK(ReactionEngine::applyGholaForceRevive(p, 3) == 0);
+	REQUIRE(p.getTreacheryCards().size() == 1);
+	CHECK(p.getTreacheryCards()[0] == "Tleilaxu Ghola");
+}
+
+TEST_CASE("applyGholaForceRevive without the card returns 0") {
+	Player p(0, "Atreides");
+	p.setUnitsReserve(3);
+	p.destroyUnits(3);
+	REQUIRE(p.getUnitsDestroyed() == 3);
+
+	CHECK(ReactionEngine::applyGholaForceRevive(p, 2) == 0);
+	CHECK(p.getUnitsDestroyed() == 3);
 }
 
 } // TEST_SUITE
