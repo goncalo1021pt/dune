@@ -774,3 +774,49 @@ bool ReactionEngine::dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,
 	}
 	return false;
 }
+
+// --- BeforeShipment (Guild advanced Karama: stop one off-planet ship) ----
+
+bool ReactionEngine::dispatchBeforeShipment(PhaseContext& ctx, int shipperIdx) {
+	if (shipperIdx < 0 || shipperIdx >= static_cast<int>(ctx.players.size())) {
+		return false;
+	}
+
+	WindowGuard guard(*this, ReactionWindow::BeforeShipment);
+
+	// AI default declines, preserving seed-42 regression.
+	if (!ctx.adapter) return false;
+
+	// Locate the Spacing Guild player. Only Guild has this advanced power.
+	int guildIdx = -1;
+	for (std::size_t i = 0; i < ctx.players.size(); ++i) {
+		auto* ab = ctx.players[i]->getFactionAbility();
+		if (ab && ab->getFactionName() == "Spacing Guild") {
+			guildIdx = static_cast<int>(i);
+			break;
+		}
+	}
+	if (guildIdx < 0 || guildIdx == shipperIdx) return false;
+	if (!playerHasCard(ctx.players[guildIdx], "Karama")) return false;
+
+	DecisionRequest req;
+	req.kind = "yn";
+	req.actor_index = guildIdx;
+	req.prompt = "Spacing Guild, play Karama to stop " +
+		ctx.players[shipperIdx]->getFactionName() + "'s off-planet shipment?";
+	auto resp = ctx.adapter->requestDecision(req);
+	if (!resp || !resp->valid || resp->payload_json != "y") return false;
+
+	if (!applyKaramaPlay(*ctx.players[guildIdx], ctx.treacheryDeck, "Karama")) {
+		return false;
+	}
+
+	logWindowOpen(ctx, ReactionWindow::BeforeShipment,
+		"Spacing Guild played Karama to stop " +
+		ctx.players[shipperIdx]->getFactionName() + "'s shipment");
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Karama:Stop Shipment] Spacing Guild stops " +
+			ctx.players[shipperIdx]->getFactionName() + "'s shipment (discard Karama)");
+	}
+	return true;
+}

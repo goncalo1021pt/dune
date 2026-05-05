@@ -91,6 +91,13 @@ public:
 	bool dispatchKaramaBlock(PhaseContext& ctx, int ownerIdx,
 		const std::string& advantageLabel);
 
+	// Open a BeforeShipment window and offer the Spacing Guild — and only
+	// Guild — the chance to play a real Karama to cancel an off-planet
+	// shipment (advanced Karama power). Returns true if Guild cancelled
+	// the shipment. AI default declines. shipperIdx is the player about
+	// to ship; the Guild player cannot Karama-stop their own shipment.
+	bool dispatchBeforeShipment(PhaseContext& ctx, int shipperIdx);
+
 	// Returns the name of the card a player would consume to play a Karama,
 	// or "" if they hold none. Honors BG canUseWorthlessAsKarama: a real
 	// Karama in hand always wins; otherwise, for a BG-eligible player, the
