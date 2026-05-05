@@ -11,6 +11,7 @@
 #include "factions/bene_gesserit_ability.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "reactions/reaction_engine.hpp"
 #include "interaction/interaction_adapter.hpp"
 #include "reactions/reaction_engine.hpp"
 
@@ -479,6 +480,11 @@ bool ShipAndMovePhase::executeGuildCrossShipment(PhaseContext& ctx, Player* play
 	auto view = ctx.getShipAndMoveView();
 	int factionIndex = player->getFactionIndex();
 
+	// Karama-block opportunity: opponents may cancel this single Cross-Shipment use.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, factionIndex, "Cross-Shipment")) {
+		return false;
+	}
+
 	GuildSourceSelection source;
 	if (!selectGuildSource(ctx, factionIndex, "Guild cross-shipment", source)) {
 		return false;
@@ -547,6 +553,11 @@ bool ShipAndMovePhase::executeGuildCrossShipment(PhaseContext& ctx, Player* play
 
 bool ShipAndMovePhase::executeGuildReturnToReserveShipment(PhaseContext& ctx, Player* player) {
 	int factionIndex = player->getFactionIndex();
+
+	// Karama-block opportunity: opponents may cancel this single Return-Shipment use.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, factionIndex, "Return Shipment")) {
+		return false;
+	}
 
 	GuildSourceSelection source;
 	if (!selectGuildSource(ctx, factionIndex, "Guild return shipment", source)) {

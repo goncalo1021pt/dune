@@ -4,6 +4,7 @@
 #include "logger/event_logger.hpp"
 #include "map.hpp"
 #include "interaction/interaction_adapter.hpp"
+#include "reactions/reaction_engine.hpp"
 #include <queue>
 #include <set>
 #include <algorithm>
@@ -67,6 +68,12 @@ bool FremenAbility::onWormHitsTerritory(PhaseContext& ctx, const std::string& te
 	}
 
 	if (fremenUnitsHere <= 0) {
+		return false;
+	}
+
+	// Karama-block opportunity: any opponent may cancel this Worm Riding use.
+	// Checked before any state mutation so we can early-exit cleanly.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, fremenIndex, "Worm Riding")) {
 		return false;
 	}
 

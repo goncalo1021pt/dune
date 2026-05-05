@@ -4,6 +4,7 @@
 #include "map.hpp"
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
+#include "reactions/reaction_engine.hpp"
 
 std::string EmperorAbility::getFactionName() const {
 	return "Emperor";
@@ -18,11 +19,17 @@ void EmperorAbility::onOtherFactionPaidForCard(PhaseContext& ctx, int payingFact
 			break;
 		}
 	}
-	
+
 	if (emperorIndex < 0 || emperorIndex == payingFactionIndex) {
 		return;  // Emperor not in game or Emperor is paying (shouldn't happen)
 	}
-	
+
+	// Karama-block opportunity: opponents may cancel this single Spice
+	// Intercept use; the bid spice then goes to the bank as it normally would.
+	if (ctx.reactions && ctx.reactions->dispatchKaramaBlock(ctx, emperorIndex, "Spice Intercept")) {
+		return;
+	}
+
 	// Emperor receives the spice payment (instead of going to bank)
 	ctx.players[emperorIndex]->addSpice(amount);
 	
