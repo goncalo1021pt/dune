@@ -38,9 +38,11 @@ TEST_SRCS = $(wildcard $(TESTS_DIR)/*.cpp)
 TEST_OBJS = $(patsubst $(TESTS_DIR)/%.cpp, $(OBJS_DIR)/tests/%.o, $(TEST_SRCS))
 TEST_BIN = $(TESTS_DIR)/run
 
-# FFI smoke test (pure C, links libdune.so).
+# FFI smoke tests (pure C, link libdune.so).
 FFI_SMOKE_SRC = $(TESTS_DIR)/ffi_smoke.c
 FFI_SMOKE_BIN = $(TESTS_DIR)/ffi_smoke
+FFI_SMOKE_INTERACTIVE_SRC = $(TESTS_DIR)/ffi_smoke_interactive.c
+FFI_SMOKE_INTERACTIVE_BIN = $(TESTS_DIR)/ffi_smoke_interactive
 
 # Tests reuse the same object files as the engine — no need to recompile.
 # The C ABI surface (srcs/ffi/dune_c_api.cpp) is excluded because its
@@ -99,9 +101,19 @@ $(FFI_SMOKE_BIN): $(FFI_SMOKE_SRC) $(SHARED)
 ffi_smoke: $(FFI_SMOKE_BIN)
 	@LD_LIBRARY_PATH=. ./$(FFI_SMOKE_BIN)
 
+# Interactive FFI smoke (PR 4b): drives a full game via the v2 surface
+# (create_interactive / step / get_pending_decision / submit_decision).
+$(FFI_SMOKE_INTERACTIVE_BIN): $(FFI_SMOKE_INTERACTIVE_SRC) $(SHARED)
+	@echo "$(BLUE)ffi_smoke_interactive$(NC) linking..."
+	@$(CC) -Wall -Wextra -Werror -I $(INCLUDES_DIR) -o $@ $(FFI_SMOKE_INTERACTIVE_SRC) -L. -ldune
+	@echo "$(BLUE)ffi_smoke_interactive$(NC) ready!"
+
+ffi_smoke_interactive: $(FFI_SMOKE_INTERACTIVE_BIN)
+	@LD_LIBRARY_PATH=. ./$(FFI_SMOKE_INTERACTIVE_BIN)
+
 clean:
 	@rm -rf $(OBJS_DIR)
-	@rm -f $(TEST_BIN) $(FFI_SMOKE_BIN)
+	@rm -f $(TEST_BIN) $(FFI_SMOKE_BIN) $(FFI_SMOKE_INTERACTIVE_BIN)
 	@echo "$(RED)$(NAME)$(NC) OBJS cleaned!"
 
 fclean: clean
@@ -113,4 +125,4 @@ fcount:
 
 re: fclean all
 
-.PHONY: all shared clean fclean re tests ffi_smoke
+.PHONY: all shared clean fclean re tests ffi_smoke ffi_smoke_interactive
