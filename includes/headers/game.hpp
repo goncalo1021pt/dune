@@ -109,6 +109,16 @@ class Game {
 		// Stored as unique_ptr so the phase context can hold a raw non-owning pointer.
 		std::unique_ptr<IInteractionAdapter> interactionAdapter;
 
+	public:
+		// Override the interaction adapter post-construction. Used by the FFI
+		// session to install an FFIAsyncAdapter in place of the default
+		// TtyAdapter that the constructor wires up for interactive=true.
+		// Must be called before initializeGame() so starting-force placement
+		// (Fremen, etc.) sees the right adapter.
+		void setInteractionAdapter(std::unique_ptr<IInteractionAdapter> adapter);
+
+	private:
+
 		// Reaction engine: brackets phase code with named reaction windows.
 		// Always present (used by all phases for legality + dispatch).
 		ReactionEngine reactionEngine;

@@ -157,8 +157,12 @@ int Game::getNextStormCard() const {
 	return nextStormCard;
 }
 
-bool Game::isInteractiveMode() const { 
-	return interactiveMode; 
+bool Game::isInteractiveMode() const {
+	return interactiveMode;
+}
+
+void Game::setInteractionAdapter(std::unique_ptr<IInteractionAdapter> adapter) {
+	interactionAdapter = std::move(adapter);
 }
 
 void Game::initializeGame() {
