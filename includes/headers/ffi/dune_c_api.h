@@ -1,14 +1,14 @@
-/* dune_c_api.h — C ABI for libdune.so, v1 (PR 4a slice).
+/* dune_c_api.h — C ABI for libdune.so.
  *
  * This is the frozen surface that Godot/GDExtension links against. Everything
  * exported here must keep its signature stable — additions are fine, but
  * existing function signatures must not change without a major version bump.
  *
- * v1 (PR 4a, this file): synchronous run + read-only snapshot/event polling.
- *   Sufficient to drive headless replay/visualisation in Godot. Adequate for
- *   single-player CLI parity.
+ * v1 (PR 4a): synchronous run + read-only snapshot/event polling.
+ *   Sufficient to drive headless replay/visualisation in Godot.
  *
- * v2 (PR 4b, planned):  non-blocking step + decision submit. Adds:
+ * v2 (PR 4b, this file): non-blocking step + decision submit. Adds:
+ *     - dune_session_create_interactive
  *     - dune_session_step
  *     - dune_session_get_pending_decision
  *     - dune_session_submit_decision
@@ -83,6 +83,56 @@ int dune_session_poll_event(dune_session_t* session, char** out_json);
 /* Frees a string previously returned by a dune_session_* call.
  * Safe to call with NULL. */
 void dune_free(char* p);
+
+/* ---- v2: interactive session (PR 4b) ----
+ *
+ * Interactive sessions install an FFIAsyncAdapter inside the engine. When
+ * the engine reaches a decision site, the worker thread parks on a condvar
+ * and dune_session_step returns DUNE_PENDING; the host then reads the
+ * pending request, submits a response, and continues.
+ *
+ * v1 sessions (created via dune_session_create) are AI-mode and reject
+ * step/get_pending_decision/submit_decision with DUNE_ERR_STATE.
+ * v2 sessions reject dune_session_run_to_end with DUNE_ERR_STATE.
+ *
+ * Cancellation: dune_session_destroy on an interactive session cooperatively
+ * signals the worker. If a decision is pending, the adapter throws
+ * SessionCancelled inside the worker thread; the worker function catches it
+ * and exits. destroy then joins. No detach, no leak.
+ */
+
+/* Allocates a new interactive session. Returns NULL on failure.
+ * Same constraints as dune_session_create (num_players: 2-6). */
+dune_session_t* dune_session_create_interactive(unsigned int seed, int num_players);
+
+/* Advance the engine until the next decision request or game completion.
+ * Behaviour by current state:
+ *   Idle             → spawns the worker thread, then waits for the first
+ *                      stable transition.
+ *   Running          → waits for the worker to reach a stable state.
+ *   AwaitingDecision → returns DUNE_ERR_STATE (host must submit first).
+ *   Done             → returns DUNE_DONE.
+ *   Error            → returns DUNE_ERR_INTERNAL.
+ *
+ * Returns DUNE_PENDING if a decision is now waiting, DUNE_DONE if the game
+ * ended, DUNE_ERR_STATE if called on an AI-mode session or with a pending
+ * decision unanswered, DUNE_ERR_ARG on bad handle, DUNE_ERR_INTERNAL on
+ * worker exception. */
+int dune_session_step(dune_session_t* session);
+
+/* Read the JSON-serialized DecisionRequest currently awaiting a response.
+ * *out_json must be freed by the caller via dune_free. Returns DUNE_OK,
+ * DUNE_ERR_STATE if no decision is pending, or DUNE_ERR_ARG on bad handle. */
+int dune_session_get_pending_decision(dune_session_t* session, char** out_json);
+
+/* Provide the response to the pending decision and advance the engine.
+ * in_json must be {"value": "<string>"} where the string becomes
+ * DecisionResponse.payload_json verbatim (the engine's existing parsing
+ * consumes it for both simple and compound kinds).
+ *
+ * Returns the same codes as dune_session_step once the engine stabilises
+ * after consuming the response (DUNE_PENDING / DUNE_DONE / DUNE_ERR_*). */
+int dune_session_submit_decision(dune_session_t* session, const char* in_json);
 
 #ifdef __cplusplus
 }
