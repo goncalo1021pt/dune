@@ -27,7 +27,14 @@ static int fail(const char* msg) {
 }
 
 /* Decide what {"value": "..."} JSON to submit for a given pending request.
- * Naive substring parsing — fine for our well-controlled JSON output. */
+ * Naive substring parsing — fine for our well-controlled JSON output.
+ *
+ * PR 4c: only primitive kinds remain (yn / int / select). Compound deployment
+ * and movement decisions are now driven by the engine as sequences of these
+ * primitives, so the policy is uniformly "pick the minimum that progresses":
+ *   yn     -> "n"  (decline)
+ *   int    -> int_min (typically 0; for unit-count prompts that means skip)
+ *   select -> "" if allow_none is true (skip), else first option */
 static void craft_response(const char* req_json, char* out, size_t out_size) {
 	const char* kind_pos = strstr(req_json, "\"kind\":\"");
 	if (!kind_pos) { snprintf(out, out_size, "{\"value\":\"\"}"); return; }
@@ -45,8 +52,14 @@ static void craft_response(const char* req_json, char* out, size_t out_size) {
 		return;
 	}
 	if (strncmp(kind_pos, "select\"", 7) == 0) {
-		/* Extract first option from "options":["..."]. If options are empty
-		 * (allow_none cases), submit empty value. */
+		/* Honour allow_none: if true, submit empty value to skip. This is
+		 * how the engine signals optional decisions in the new primitive
+		 * flow (e.g. "choose territory or skip" at the start of deployment). */
+		if (strstr(req_json, "\"allow_none\":true")) {
+			snprintf(out, out_size, "{\"value\":\"\"}");
+			return;
+		}
+		/* Mandatory select: pick the first option. */
 		const char* opts_pos = strstr(req_json, "\"options\":[\"");
 		if (opts_pos) {
 			opts_pos += 12;
@@ -60,14 +73,6 @@ static void craft_response(const char* req_json, char* out, size_t out_size) {
 			}
 		}
 		snprintf(out, out_size, "{\"value\":\"\"}");
-		return;
-	}
-	if (strncmp(kind_pos, "deployment\"", 11) == 0 ||
-	    strncmp(kind_pos, "movement\"", 9) == 0) {
-		/* {"value":"{\"skip\":true}"} — value is itself a JSON-encoded
-		 * payload that the engine's existing parser consumes via the
-		 * "skip":true substring check. */
-		snprintf(out, out_size, "{\"value\":\"{\\\"skip\\\":true}\"}");
 		return;
 	}
 	snprintf(out, out_size, "{\"value\":\"\"}");

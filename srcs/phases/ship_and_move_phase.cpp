@@ -2,7 +2,6 @@
 #include "game.hpp"
 #include "map.hpp"
 #include "player.hpp"
-#include "interactive_input.hpp"
 #include <iostream>
 #include <algorithm>
 #include <queue>

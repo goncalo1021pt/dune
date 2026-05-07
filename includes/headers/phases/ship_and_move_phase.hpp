@@ -5,7 +5,6 @@
 #include <string>
 
 struct territory;
-class InteractiveInput;
 
 class ShipAndMovePhase : public Phase {
 public:

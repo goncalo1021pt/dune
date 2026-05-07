@@ -1,16 +1,11 @@
 #include "interaction/tty_adapter.hpp"
-#include "interactive_input.hpp"
-#include "phases/phase_context.hpp"
 
 #include <iostream>
-#include <stdexcept>
 
 std::optional<DecisionResponse> TtyAdapter::requestDecision(const DecisionRequest& req) {
-	if (req.kind == "yn")         return handleYn(req);
-	if (req.kind == "int")        return handleInt(req);
-	if (req.kind == "select")     return handleSelect(req);
-	if (req.kind == "deployment") return handleDeployment(req);
-	if (req.kind == "movement")   return handleMovement(req);
+	if (req.kind == "yn")     return handleYn(req);
+	if (req.kind == "int")    return handleInt(req);
+	if (req.kind == "select") return handleSelect(req);
 
 	// Unknown kind: log and return invalid response rather than crashing.
 	std::cerr << "[TtyAdapter] Unknown decision kind: " << req.kind << std::endl;
@@ -92,62 +87,3 @@ DecisionResponse TtyAdapter::handleSelect(const DecisionRequest& req) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Compound handlers — use migration_ctx until PR 4 serializes these fully.
-// ---------------------------------------------------------------------------
-
-DecisionResponse TtyAdapter::handleDeployment(const DecisionRequest& req) {
-	if (!req.migration_ctx) {
-		std::cerr << "[TtyAdapter] deployment request missing migration_ctx" << std::endl;
-		return {req.correlation_id, "{\"skip\":true}", false};
-	}
-	PhaseContext& ctx = *static_cast<PhaseContext*>(req.migration_ctx);
-	if (req.actor_index < 0 || req.actor_index >= static_cast<int>(ctx.players.size())) {
-		return {req.correlation_id, "{\"skip\":true}", false};
-	}
-	Player* player = ctx.players[req.actor_index];
-
-	// valid_targets are passed as options
-	auto choice = InteractiveInput::getDeploymentDecision(ctx, player, req.options);
-
-	if (!choice.shouldDeploy) {
-		return {req.correlation_id, "{\"skip\":true}", true};
-	}
-
-	// Serialize result as minimal JSON (nlohmann not included here; hand-rolled is fine
-	// for this small struct — PR 4 will use the proper serializer).
-	std::string json = "{\"territory\":\"" + choice.territoryName + "\""
-		+ ",\"normal\":" + std::to_string(choice.normalUnits)
-		+ ",\"elite\":" + std::to_string(choice.eliteUnits)
-		+ ",\"sector\":" + std::to_string(choice.sector)
-		+ ",\"skip\":false}";
-	return {req.correlation_id, json, true};
-}
-
-DecisionResponse TtyAdapter::handleMovement(const DecisionRequest& req) {
-	if (!req.migration_ctx) {
-		std::cerr << "[TtyAdapter] movement request missing migration_ctx" << std::endl;
-		return {req.correlation_id, "{\"skip\":true}", false};
-	}
-	PhaseContext& ctx = *static_cast<PhaseContext*>(req.migration_ctx);
-	if (req.actor_index < 0 || req.actor_index >= static_cast<int>(ctx.players.size())) {
-		return {req.correlation_id, "{\"skip\":true}", false};
-	}
-	Player* player = ctx.players[req.actor_index];
-
-	// options = territories with units, int_max = movement range
-	auto choice = InteractiveInput::getMovementDecision(ctx, player, req.options, req.int_max);
-
-	if (!choice.shouldMove) {
-		return {req.correlation_id, "{\"skip\":true}", true};
-	}
-
-	std::string json = "{\"from\":\"" + choice.fromTerritory + "\""
-		+ ",\"to\":\"" + choice.toTerritory + "\""
-		+ ",\"normal\":" + std::to_string(choice.normalUnits)
-		+ ",\"elite\":" + std::to_string(choice.eliteUnits)
-		+ ",\"from_sector\":" + std::to_string(choice.fromSector)
-		+ ",\"to_sector\":" + std::to_string(choice.toSector)
-		+ ",\"skip\":false}";
-	return {req.correlation_id, json, true};
-}

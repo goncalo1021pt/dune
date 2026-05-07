@@ -18,9 +18,6 @@ std::string requestToJson(const DecisionRequest& req) {
 		{"int_min",        req.int_min},
 		{"int_max",        req.int_max},
 	};
-	// Note: migration_ctx is deliberately omitted — it's a raw PhaseContext*
-	// that's meaningless and unsafe across the C ABI. PR 4c removes the
-	// field from DecisionRequest itself.
 	return out.dump();
 }
 
