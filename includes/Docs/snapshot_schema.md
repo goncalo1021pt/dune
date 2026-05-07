@@ -152,20 +152,21 @@ response.
 ```jsonc
 {
   "correlation_id": <uint>,
-  "kind":           <string>,    // "yn" | "int" | "select" | "deployment" | "movement"
+  "kind":           <string>,    // "yn" | "int" | "select"  (primitive only since PR 4c)
   "actor_index":    <int>,       // 0..5; -1 if not actor-specific
   "prompt":         <string>,
-  "options":        [<string>, ...],   // populated for "select"; valid territory names for compound
+  "options":        [<string>, ...],   // populated for "select"
   "allow_none":     <bool>,            // for "select"; true means empty value is legal
   "int_min":        <int>,             // for "int" (inclusive)
   "int_max":        <int>              // for "int" (inclusive)
 }
 ```
 
-The `migration_ctx` field on the engine-side `DecisionRequest` struct is
-**never** included — it's a raw `PhaseContext*` that's a dangling pointer
-from the host's perspective and a security smell to expose. PR 4c removes
-the field from the struct entirely.
+Only primitive kinds since PR 4c. The engine drives multi-step flows
+(deployment, movement) by emitting *sequences* of these primitives, so a
+host only ever has to render and answer one simple decision at a time.
+A typical deployment is select-territory → int-units → int-elite-split →
+select-sector; a typical movement adds a source-sector pick at the start.
 
 ### Submit response (host → engine, via `dune_session_submit_decision`)
 
@@ -183,18 +184,11 @@ the TtyAdapter writes on the CLI side flows through here unchanged.
 
 ### Per-kind value shapes
 
-| `kind`        | `value` shape                                                                                                            |
-|---------------|--------------------------------------------------------------------------------------------------------------------------|
-| `yn`          | `"y"` or `"n"`                                                                                                           |
-| `int`         | decimal integer as string, e.g. `"5"`. Must satisfy `int_min ≤ value ≤ int_max`.                                         |
-| `select`      | one of the strings in `options[]`, or `""` if `allow_none: true`.                                                         |
-| `deployment`  | JSON-encoded string: `"{\"territory\":\"Arrakeen\",\"normal\":3,\"elite\":0,\"sector\":0,\"skip\":false}"`              |
-| `movement`    | JSON-encoded string: `"{\"from\":\"Arrakeen\",\"to\":\"Carthag\",\"normal\":2,\"elite\":0,\"from_sector\":0,\"to_sector\":4,\"skip\":false}"` |
-| any kind      | `"{\"skip\":true}"` (for compound kinds) or empty (for simple) skips the action where the engine accepts a skip          |
-
-Compound kinds are double-encoded in v2 (the value is itself a JSON
-string). PR 4c will introduce a flat schema once the `migration_ctx`
-shim is gone from the engine's `DecisionRequest`.
+| `kind`   | `value` shape                                                                                                |
+|----------|--------------------------------------------------------------------------------------------------------------|
+| `yn`     | `"y"` or `"n"`                                                                                               |
+| `int`    | decimal integer as string, e.g. `"5"`. Must satisfy `int_min ≤ value ≤ int_max`.                             |
+| `select` | one of the strings in `options[]`, or `""` if `allow_none: true` (the engine treats empty value as a skip).  |
 
 ### Return-code matrix
 

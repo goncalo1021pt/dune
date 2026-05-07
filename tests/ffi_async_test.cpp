@@ -156,13 +156,13 @@ TEST_CASE("multiple sequential requestDecision calls reset the response slot") {
 
 TEST_CASE("correlation_id flows through request -> pendingRequest and response.payload_json is verbatim") {
 	// Locks in: the adapter does not mutate request fields on the way in,
-	// and does not interpret payload_json on the way out — even compound
-	// JSON-encoded values pass through untouched.
+	// and does not interpret payload_json on the way out — even values that
+	// contain quotes or embedded JSON pass through untouched.
 	DecisionChannel channel;
 	FFIAsyncAdapter adapter(&channel);
 
 	DecisionRequest req;
-	req.kind = "deployment";
+	req.kind = "select";
 	req.actor_index = 2;
 	req.correlation_id = 99;
 	req.options = {"Arrakeen", "Sietch Tabr"};
@@ -173,17 +173,18 @@ TEST_CASE("correlation_id flows through request -> pendingRequest and response.p
 	{
 		std::lock_guard<std::mutex> lock(channel.mu);
 		CHECK(channel.pendingRequest.correlation_id == 99u);
-		CHECK(channel.pendingRequest.kind == "deployment");
+		CHECK(channel.pendingRequest.kind == "select");
 		CHECK(channel.pendingRequest.options.size() == 2);
 	}
 
-	const std::string compoundValue =
-		R"({"territory":"Arrakeen","normal":3,"elite":0,"sector":0,"skip":false})";
-	hostSubmit(channel, compoundValue);
+	// Verbatim passthrough — even a value containing quotes and embedded
+	// JSON is preserved byte-for-byte.
+	const std::string verbatim = R"({"x":42,"q":"\"hi\""})";
+	hostSubmit(channel, verbatim);
 
 	auto resp = fut.get();
 	REQUIRE(resp.has_value());
-	CHECK(resp->payload_json == compoundValue);
+	CHECK(resp->payload_json == verbatim);
 }
 
 } // TEST_SUITE

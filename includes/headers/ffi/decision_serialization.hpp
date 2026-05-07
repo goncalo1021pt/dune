@@ -1,18 +1,18 @@
 // decision_serialization.hpp — JSON shapes for the FFI v2 decision protocol
-// (PR 4b). The host process never sees DecisionRequest / DecisionResponse
+// (PR 4b/4c). The host process never sees DecisionRequest / DecisionResponse
 // directly; they cross the C ABI boundary as JSON strings produced and
 // consumed by the helpers in this header.
 //
-// Schema is intentionally minimal:
-//   - requestToJson  drops the void* migration_ctx (a raw PhaseContext pointer
-//                    that's a dangling reference from the host's perspective
-//                    and a security smell to expose). PR 4c removes the field
-//                    from DecisionRequest itself.
+// Schema is intentionally minimal — only primitive kinds (yn/int/select)
+// since PR 4c. The engine drives multi-step flows (deployment, movement)
+// by issuing sequences of these primitives, so the host only ever has to
+// answer one simple decision at a time.
+//
+//   - requestToJson  serialises a DecisionRequest as a flat JSON object.
 //   - parseSubmitJson accepts {"value": "<string>"} and stuffs the value
 //                    string into DecisionResponse.payload_json verbatim. The
 //                    engine's existing parsing code consumes payload_json
-//                    unchanged, so simple kinds (yn/int/select) and compound
-//                    kinds (deployment/movement) flow through the same path.
+//                    unchanged.
 
 #pragma once
 
@@ -25,7 +25,9 @@ struct DecisionResponse;
 namespace DecisionSerialization {
 
 // Serialize a DecisionRequest to the JSON shape the host will receive via
-// dune_session_get_pending_decision. Never includes migration_ctx.
+// dune_session_get_pending_decision. Output contains only the documented
+// primitive-kind fields (correlation_id, kind, actor_index, prompt,
+// options, allow_none, int_min, int_max).
 std::string requestToJson(const DecisionRequest& req);
 
 // Parse a host-submitted JSON string. Returns std::nullopt on malformed

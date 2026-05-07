@@ -6,6 +6,8 @@
 #include "interaction/interaction_adapter.hpp"
 
 #include <nlohmann/json.hpp>
+#include <set>
+#include <string>
 
 using json = nlohmann::json;
 using DecisionSerialization::requestToJson;
@@ -60,24 +62,25 @@ TEST_CASE("requestToJson includes int_min/int_max for int kind") {
 	CHECK(j["int_max"].get<int>() == 12);
 }
 
-TEST_CASE("requestToJson never leaks migration_ctx") {
-	// The TtyAdapter relies on migration_ctx as a raw PhaseContext*. The
-	// FFI boundary must NOT expose it — it's a dangling pointer from the
-	// host's perspective and a security smell. PR 4c removes the field
-	// entirely; until then, the serializer drops it.
-	int phantomContext = 0;  // address-only stand-in
+TEST_CASE("requestToJson emits only the documented fields") {
+	// Lock the v2 schema down: the JSON we hand the host must contain
+	// exactly the fields documented in snapshot_schema.md and nothing
+	// extra. PR 4c removed migration_ctx from DecisionRequest entirely;
+	// this is the regression check that no one re-adds an unsafe field.
 	DecisionRequest req;
-	req.kind = "deployment";
+	req.kind = "select";
 	req.actor_index = 1;
-	req.options = {"Arrakeen", "Sietch Tabr"};
-	req.migration_ctx = &phantomContext;
+	req.prompt = "Pick:";
+	req.options = {"a", "b"};
 
-	std::string out = requestToJson(req);
-	json j = json::parse(out);
-	CHECK_FALSE(j.contains("migration_ctx"));
-	// Belt + suspenders: the raw bytes must not contain that field name
-	// in any form (not as a key, not as a string value).
-	CHECK(out.find("migration_ctx") == std::string::npos);
+	json j = json::parse(requestToJson(req));
+	const std::set<std::string> expected = {
+		"correlation_id", "kind", "actor_index", "prompt",
+		"options", "allow_none", "int_min", "int_max"
+	};
+	std::set<std::string> actual;
+	for (auto it = j.begin(); it != j.end(); ++it) actual.insert(it.key());
+	CHECK(actual == expected);
 }
 
 TEST_CASE("parseSubmitJson reads a simple-kind value") {
@@ -95,16 +98,16 @@ TEST_CASE("parseSubmitJson preserves correlation_id when present") {
 	CHECK(resp->correlation_id == 42u);
 }
 
-TEST_CASE("parseSubmitJson stuffs nested JSON value verbatim into payload_json") {
-	// Compound decisions (deployment) carry a JSON-encoded string as the
-	// value. The engine's existing parser walks payload_json directly, so
-	// the FFI just hands it through unchanged.
-	const std::string deploymentValue =
-		R"({"territory":"Arrakeen","normal":3,"elite":0,"sector":0,"skip":false})";
-	json wrapped = {{"value", deploymentValue}};
+TEST_CASE("parseSubmitJson stuffs the value string verbatim into payload_json") {
+	// The FFI never parses the value string — the engine's existing per-kind
+	// parsing consumes payload_json directly. This test pins that contract:
+	// whatever the host puts in "value", that's what the engine gets, byte
+	// for byte. Quotes and embedded JSON in particular must not be touched.
+	const std::string raw = R"({"x":42,"q":"\"hi\""})";
+	json wrapped = {{"value", raw}};
 	auto resp = parseSubmitJson(wrapped.dump());
 	REQUIRE(resp.has_value());
-	CHECK(resp->payload_json == deploymentValue);
+	CHECK(resp->payload_json == raw);
 }
 
 TEST_CASE("parseSubmitJson rejects malformed input") {

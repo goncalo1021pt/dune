@@ -5,7 +5,6 @@
 #include <string>
 
 struct territory;
-class InteractiveInput;
 
 class ShipAndMovePhase : public Phase {
 public:
@@ -64,6 +63,15 @@ private:
 	};
 	
 	DeploymentDecision aiDecideDeployment(PhaseContext& ctx, Player* player) const;
+
+	// Drive an interactive deployment via a sequence of primitive adapter
+	// requests (select territory, int normal, int elite, select sector).
+	// Mirrors the engine-side option computation that aiDecideDeployment
+	// uses. Returns shouldDeploy=false if the adapter is null, the player
+	// declines via empty territory select, or any sub-decision fails.
+	DeploymentDecision interactiveDeploymentDecision(
+		PhaseContext& ctx, Player* player,
+		const std::vector<std::string>& validTargets) const;
 	
 	struct MovementDecision {
 		std::string fromTerritory;
@@ -76,6 +84,16 @@ private:
 	};
 	
 	MovementDecision aiDecideMovement(PhaseContext& ctx, Player* player, int movementRange) const;
+
+	// Drive an interactive movement via primitive adapter requests:
+	// select source territory, select source sector (auto if only one
+	// movable), select destination territory (BFS-reachable), int normal,
+	// int elite, select destination sector. Returns shouldMove=false if
+	// the adapter is null, the player declines, or any sub-decision fails.
+	MovementDecision interactiveMovementDecision(
+		PhaseContext& ctx, Player* player,
+		const std::vector<std::string>& territoriesWithUnits,
+		int movementRange) const;
 	
 	// === VALIDATION ===
 	
