@@ -64,6 +64,15 @@ private:
 	};
 	
 	DeploymentDecision aiDecideDeployment(PhaseContext& ctx, Player* player) const;
+
+	// Drive an interactive deployment via a sequence of primitive adapter
+	// requests (select territory, int normal, int elite, select sector).
+	// Mirrors the engine-side option computation that aiDecideDeployment
+	// uses. Returns shouldDeploy=false if the adapter is null, the player
+	// declines via empty territory select, or any sub-decision fails.
+	DeploymentDecision interactiveDeploymentDecision(
+		PhaseContext& ctx, Player* player,
+		const std::vector<std::string>& validTargets) const;
 	
 	struct MovementDecision {
 		std::string fromTerritory;

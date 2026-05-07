@@ -447,24 +447,10 @@ bool ShipAndMovePhase::executePlayerShipment(PhaseContext& ctx, Player* player) 
 	}
 
 	std::vector<std::string> validTargets = getValidDeploymentTargets(ctx, player->getFactionIndex());
-	
-	DeploymentDecision decision;
 
+	DeploymentDecision decision;
 	if (ctx.adapter) {
-		DecisionRequest req;
-		req.kind = "deployment";
-		req.actor_index = player->getFactionIndex();
-		req.options = validTargets;
-		req.migration_ctx = &ctx;
-		auto resp = ctx.adapter->requestDecision(req);
-		if (resp && resp->valid && resp->payload_json.find("\"skip\":true") == std::string::npos) {
-			decision.territoryName = jsonExtractString(resp->payload_json, "territory");
-			decision.normalUnits   = jsonExtractInt(resp->payload_json, "normal");
-			decision.eliteUnits    = jsonExtractInt(resp->payload_json, "elite");
-			decision.sector        = jsonExtractInt(resp->payload_json, "sector");
-			decision.shouldDeploy  = !decision.territoryName.empty();
-			decision.spiceCost     = 0;
-		}
+		decision = interactiveDeploymentDecision(ctx, player, validTargets);
 	} else {
 		decision = aiDecideDeployment(ctx, player);
 	}
@@ -1176,6 +1162,127 @@ ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::aiDecideDeployment(
 	decision.sector         = safeSector;
 	decision.spiceCost      = calculateDeploymentCost(terr, unitsToDeploy, player);
 	
+	return decision;
+}
+
+ShipAndMovePhase::DeploymentDecision ShipAndMovePhase::interactiveDeploymentDecision(
+	PhaseContext& ctx, Player* player,
+	const std::vector<std::string>& validTargets) const {
+
+	DeploymentDecision decision;
+	decision.shouldDeploy = false;
+	decision.normalUnits  = 0;
+	decision.eliteUnits   = 0;
+	decision.sector       = -1;
+	decision.spiceCost    = 0;
+
+	if (!ctx.adapter) return decision;
+	if (validTargets.empty()) return decision;
+
+	const int factionIndex = player->getFactionIndex();
+	const int normalReserve = player->getUnitsReserve();
+	const int eliteReserve  = player->getEliteUnitsReserve();
+	const int totalReserve  = normalReserve + eliteReserve;
+	if (totalReserve <= 0) return decision;
+
+	// Light context line for terminal players. FFI hosts read this through
+	// their snapshot; for them it's just an extra log entry they can ignore.
+	if (ctx.logger) {
+		ctx.logger->logDebug("[Shipment] " + player->getFactionName() +
+			" — reserve: " + std::to_string(normalReserve) + " normal, " +
+			std::to_string(eliteReserve) + " elite. Spice: " +
+			std::to_string(player->getSpice()) + ".");
+	}
+
+	// 1. Pick a target territory (or skip via empty value).
+	std::string territoryName;
+	{
+		DecisionRequest req;
+		req.kind = "select";
+		req.actor_index = factionIndex;
+		req.prompt = "Choose a territory to ship to (or skip):";
+		req.options = validTargets;
+		req.allow_none = true;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid || resp->payload_json.empty()) return decision;
+		territoryName = resp->payload_json;
+	}
+	const territory* destTerr = ctx.map.getTerritory(territoryName);
+	if (!destTerr) return decision;
+
+	// 2. Pick total units to ship (0 = skip).
+	int totalUnits = 0;
+	{
+		DecisionRequest req;
+		req.kind = "int";
+		req.actor_index = factionIndex;
+		req.prompt = "How many units to ship to " + territoryName + " (0-" +
+			std::to_string(totalReserve) + ")?";
+		req.int_min = 0;
+		req.int_max = totalReserve;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (!resp || !resp->valid) return decision;
+		try { totalUnits = std::stoi(resp->payload_json); } catch (...) { return decision; }
+	}
+	if (totalUnits <= 0) return decision;
+
+	// 3. Elite split (skip if the player has no elite units OR shipping zero).
+	int eliteUnits = 0;
+	if (eliteReserve > 0) {
+		const int maxElite = std::min(totalUnits, eliteReserve);
+		DecisionRequest req;
+		req.kind = "int";
+		req.actor_index = factionIndex;
+		req.prompt = "How many of those " + std::to_string(totalUnits) +
+			" should be elite (0-" + std::to_string(maxElite) + ")?";
+		req.int_min = 0;
+		req.int_max = maxElite;
+		auto resp = ctx.adapter->requestDecision(req);
+		if (resp && resp->valid) {
+			try { eliteUnits = std::stoi(resp->payload_json); } catch (...) { eliteUnits = 0; }
+		}
+	}
+	const int normalUnits = totalUnits - eliteUnits;
+
+	// 4. Pick a destination sector. Polar Sink uses -1 (sector-less). Single
+	// safe sector auto-resolves. Multi-sector territories prompt.
+	int chosenSector = -1;
+	if (destTerr->terrain != terrainType::northPole) {
+		std::vector<int> safeSectors;
+		std::vector<std::string> sectorOptions;
+		for (int s : destTerr->sectors) {
+			if (GameMap::canLeaveSector(s, ctx.stormSector)) {
+				safeSectors.push_back(s);
+				sectorOptions.push_back("Sector " + std::to_string(s));
+			}
+		}
+		if (safeSectors.empty()) return decision;  // entire territory in storm
+		if (safeSectors.size() == 1) {
+			chosenSector = safeSectors[0];
+		} else {
+			DecisionRequest req;
+			req.kind = "select";
+			req.actor_index = factionIndex;
+			req.prompt = "Choose destination sector in " + territoryName + ":";
+			req.options = sectorOptions;
+			auto resp = ctx.adapter->requestDecision(req);
+			if (!resp || !resp->valid || resp->payload_json.empty()) return decision;
+			for (std::size_t i = 0; i < sectorOptions.size(); ++i) {
+				if (sectorOptions[i] == resp->payload_json) {
+					chosenSector = safeSectors[i];
+					break;
+				}
+			}
+			if (chosenSector == -1) return decision;
+		}
+	}
+
+	decision.shouldDeploy  = true;
+	decision.territoryName = territoryName;
+	decision.normalUnits   = normalUnits;
+	decision.eliteUnits    = eliteUnits;
+	decision.sector        = chosenSector;
+	decision.spiceCost     = 0;
 	return decision;
 }
 
