@@ -85,6 +85,16 @@ private:
 	};
 	
 	MovementDecision aiDecideMovement(PhaseContext& ctx, Player* player, int movementRange) const;
+
+	// Drive an interactive movement via primitive adapter requests:
+	// select source territory, select source sector (auto if only one
+	// movable), select destination territory (BFS-reachable), int normal,
+	// int elite, select destination sector. Returns shouldMove=false if
+	// the adapter is null, the player declines, or any sub-decision fails.
+	MovementDecision interactiveMovementDecision(
+		PhaseContext& ctx, Player* player,
+		const std::vector<std::string>& territoriesWithUnits,
+		int movementRange) const;
 	
 	// === VALIDATION ===
 	
