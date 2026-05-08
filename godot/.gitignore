@@ -1,0 +1,13 @@
+# Godot 4 cache & local data
+.godot/
+
+# Platform export staging
+/android/
+
+# Per-user export configuration (often has local paths)
+export_presets.cfg
+
+# GDExtension build outputs land here in a follow-up PR.
+# We deliberately do NOT commit the compiled libdune.so/.dll —
+# it's a build artifact, rebuilt from srcs/ on each platform.
+addons/dune/bin/
