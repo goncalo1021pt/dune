@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <sstream>
 #include <cctype>
+#include <random>
 #include "events/event.hpp"
 #include "logger/event_logger.hpp"
 
@@ -1361,8 +1362,13 @@ int BattlePhase::getBattleWheelChoice(PhaseContext& ctx, int playerIndex, int ma
 		}
 		return convertStrengthToUnitCount(choice, normalAvailable, eliteAvailable, eliteStrength);
 	} else {
-		// AI: random strength choice 0 to maxStrength
-		int strength = rand() % (maxStrength + 1);
+		// AI: random strength choice 0 to maxStrength, drawn from the
+		// game's seeded RNG so identical (seed, decisions) reproduce
+		// identical battle outcomes. Previously libc rand() — broke
+		// determinism the moment two Game instances coexisted in one
+		// process (every one shared global rand() state).
+		std::uniform_int_distribution<int> dist(0, maxStrength);
+		int strength = dist(ctx.rng);
 		if (ctx.logger) {
 			ctx.logger->logDebug(player->getFactionName() + " battle strength: " + std::to_string(strength));
 		}
