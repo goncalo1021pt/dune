@@ -1,12 +1,23 @@
 # Build artifacts
 objs/
+objs_win/
 *.o
+*.os
 *.a
 *.so
-dune
+*.dll
+/dune
 tests/run
 tests/ffi_smoke
 tests/ffi_smoke_interactive
+
+# GDExtension build artifacts (godot-cpp generated/object files, scons
+# cache). The wrapper .so/.dll output lands in godot/addons/dune/bin/
+# which is already ignored by godot/.gitignore.
+godot-cpp/bin/
+godot-cpp/gen/
+.sconsign.dblite
+gdextension/.sconsign.dblite
 
 # IDE
 .vscode/

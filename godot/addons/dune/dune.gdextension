@@ -1,0 +1,35 @@
+; Dune GDExtension manifest. Tells Godot which native binary to load for
+; each (platform, target, arch) combination, and which auxiliary files
+; ship alongside on export.
+;
+; Build the binaries from <repo_root>/gdextension with:
+;   scons platform=linux   target=template_debug
+;   scons platform=windows target=template_debug use_mingw=yes
+; (See gdextension/SConstruct for the full matrix.)
+
+[configuration]
+
+entry_symbol = "dune_library_init"
+compatibility_minimum = "4.5"
+
+[libraries]
+
+linux.debug.x86_64           = "res://addons/dune/bin/libdune_gdextension.linux.template_debug.x86_64.so"
+linux.release.x86_64         = "res://addons/dune/bin/libdune_gdextension.linux.template_release.x86_64.so"
+linux.editor.x86_64          = "res://addons/dune/bin/libdune_gdextension.linux.template_debug.x86_64.so"
+
+windows.debug.x86_64         = "res://addons/dune/bin/libdune_gdextension.windows.template_debug.x86_64.dll"
+windows.release.x86_64       = "res://addons/dune/bin/libdune_gdextension.windows.template_release.x86_64.dll"
+windows.editor.x86_64        = "res://addons/dune/bin/libdune_gdextension.windows.template_debug.x86_64.dll"
+
+[dependencies]
+
+; libdune is the engine (12-symbol C ABI). Godot copies it next to the
+; wrapper on export so DT_NEEDED / LoadLibrary resolves at startup.
+linux.debug.x86_64           = { "res://addons/dune/bin/libdune.so"  : "" }
+linux.release.x86_64         = { "res://addons/dune/bin/libdune.so"  : "" }
+linux.editor.x86_64          = { "res://addons/dune/bin/libdune.so"  : "" }
+
+windows.debug.x86_64         = { "res://addons/dune/bin/libdune.dll" : "" }
+windows.release.x86_64       = { "res://addons/dune/bin/libdune.dll" : "" }
+windows.editor.x86_64        = { "res://addons/dune/bin/libdune.dll" : "" }

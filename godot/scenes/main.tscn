@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://b8nrt4f1xv4qd"]
+[gd_scene load_steps=3 format=3 uid="uid://b8nrt4f1xv4qd"]
 
-[ext_resource type="Script" path="res://scripts/libdune_smoke.gd" id="1_smoke"]
+[ext_resource type="Script" path="res://scripts/dune_runner.gd" id="1_runner"]
+[ext_resource type="Script" path="res://scripts/dune_map_view.gd" id="2_map"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -9,30 +10,76 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_smoke")
+script = ExtResource("1_runner")
 
-[node name="VBox" type="VBoxContainer" parent="."]
+[node name="HBox" type="HBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = 16.0
-offset_right = -16.0
-offset_bottom = -16.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Status" type="Label" parent="VBox"]
+[node name="Map" type="Control" parent="HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 2.5
+script = ExtResource("2_map")
+
+[node name="Side" type="VBoxContainer" parent="HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+custom_minimum_size = Vector2(280, 0)
+
+[node name="Status" type="Label" parent="HBox/Side"]
 layout_mode = 2
 text = "Idle"
 
-[node name="RunButton" type="Button" parent="VBox"]
+[node name="Controls" type="GridContainer" parent="HBox/Side"]
 layout_mode = 2
-text = "Run libdune.so smoke test"
+columns = 2
 
-[node name="Output" type="RichTextLabel" parent="VBox"]
+[node name="SeedLabel" type="Label" parent="HBox/Side/Controls"]
+layout_mode = 2
+text = "Seed"
+
+[node name="SeedSpin" type="SpinBox" parent="HBox/Side/Controls"]
+layout_mode = 2
+min_value = 0.0
+max_value = 4294967295.0
+step = 1.0
+value = 42.0
+
+[node name="PlayersLabel" type="Label" parent="HBox/Side/Controls"]
+layout_mode = 2
+text = "Players"
+
+[node name="PlayersSpin" type="SpinBox" parent="HBox/Side/Controls"]
+layout_mode = 2
+min_value = 2.0
+max_value = 6.0
+step = 1.0
+value = 6.0
+
+[node name="Buttons" type="HBoxContainer" parent="HBox/Side"]
+layout_mode = 2
+
+[node name="RunButton" type="Button" parent="HBox/Side/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Run game"
+
+[node name="Summary" type="Label" parent="HBox/Side"]
+layout_mode = 2
+
+[node name="EventLog" type="RichTextLabel" parent="HBox/Side"]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = false
 selection_enabled = true
+scroll_following = true

@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+"""SConstruct for the Dune GDExtension wrapper.
+
+Builds `libdune_gdextension.<platform>.<target>.<arch>.so/.dll` into
+`../godot/addons/dune/bin/`. The output binary depends on `libdune.so` (or
+`libdune.dll` on Windows), which the top-level Makefile produces from the
+engine sources. The .gdextension config declares that .so/.dll as a runtime
+dependency so Godot ships it alongside the wrapper on export.
+
+Usage from this directory:
+    scons platform=linux target=template_debug
+    scons platform=windows target=template_debug use_mingw=yes
+
+Run `make shared` (or `make windows-shared`) at the repo root first so
+libdune.so / libdune.dll exists for the link step.
+"""
+import os
+
+# godot-cpp lives one level up at <repo_root>/godot-cpp.
+env = SConscript("../godot-cpp/SConstruct")
+
+# Source layout.
+env.Append(CPPPATH=["src/", "../includes/headers/"])
+sources = Glob("src/*.cpp")
+
+# Locate libdune at the repo root. The Makefile drops libdune.so there, and
+# we install the same artifact (or libdune.dll for Windows builds) into
+# godot/addons/dune/bin/ at the end of the build.
+repo_root = os.path.abspath("..")
+
+if env["platform"] == "windows":
+    # godot-cpp's Windows config passes -static to the linker, which makes
+    # ld prefer libdune.a over the libdune.dll.a import library mingw emits.
+    # Pass the import library by explicit path so ld doesn't go searching.
+    env.Append(LIBS=[File(os.path.join(repo_root, "libdune.dll.a"))])
+else:
+    env.Append(LIBPATH=[repo_root])
+    env.Append(LIBS=["dune"])
+
+# Output goes straight to the addon's bin/ directory so Godot picks it up.
+addon_bin = os.path.join("..", "godot", "addons", "dune", "bin")
+suffix = env["suffix"]
+shlib_suffix = env["SHLIBSUFFIX"]
+library_path = os.path.join(addon_bin, "libdune_gdextension{}{}".format(suffix, shlib_suffix))
+
+# On Linux we want the GDExtension to find libdune.so in its own directory at
+# load time without LD_LIBRARY_PATH gymnastics.
+if env["platform"] == "linux":
+    env.Append(LINKFLAGS=["-Wl,-rpath,$$ORIGIN"])
+
+library = env.SharedLibrary(library_path, source=sources)
+Default(library)
+
+# Convenience: also stage libdune.so / libdune.dll into the addon bin dir
+# so a fresh checkout-and-build leaves Godot ready to run.
+if env["platform"] == "linux":
+    libdune_src = os.path.join(repo_root, "libdune.so")
+    libdune_dst = os.path.join(addon_bin, "libdune.so")
+elif env["platform"] == "windows":
+    libdune_src = os.path.join(repo_root, "libdune.dll")
+    libdune_dst = os.path.join(addon_bin, "libdune.dll")
+else:
+    libdune_src = None
+
+if libdune_src and os.path.exists(libdune_src):
+    staged = env.Command(libdune_dst, libdune_src, Copy("$TARGET", "$SOURCE"))
+    Depends(library, staged)
+    Default(staged)
