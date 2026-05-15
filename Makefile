@@ -1,5 +1,6 @@
 NAME = dune
 SHARED = libdune.so
+SHARED_WIN = libdune.dll
 
 SRCS_DIR = srcs
 
@@ -26,11 +27,23 @@ HEADERS = $(wildcard $(INCLUDES_DIR)/*.hpp $(INCLUDES_DIR)/*.h $(INCLUDES_DIR)/*
 CXX = g++
 CXXFLAGS = -Wall -Wextra -Werror -g3 -std=c++17 -fPIC
 
+# Windows cross-compile (mingw-w64). The posix thread model is mandatory:
+# the FFI's FFIAsyncAdapter relies on std::thread / std::condition_variable
+# (PR 4b), which are stubs under the default win32 thread model.
+CXX_WIN = x86_64-w64-mingw32-g++-posix
+CXXFLAGS_WIN = -Wall -Wextra -Werror -g3 -std=c++17
+
 OBJS_DIR = objs
+OBJS_DIR_WIN = objs_win
 
 CORE_OBJS    = $(patsubst $(SRCS_DIR)/%.cpp, $(OBJS_DIR)/%.o, $(CORE_SRCS))
 CLI_ONLY_OBJS = $(patsubst $(SRCS_DIR)/%.cpp, $(OBJS_DIR)/%.o, $(CLI_ONLY_SRCS))
 FFI_OBJS     = $(patsubst $(SRCS_DIR)/%.cpp, $(OBJS_DIR)/%.o, $(FFI_SRCS))
+
+# Mirror objects for the Windows build under objs_win/ so the two trees
+# don't collide. Only core + ffi sources go into libdune.dll (no CLI bits).
+CORE_OBJS_WIN = $(patsubst $(SRCS_DIR)/%.cpp, $(OBJS_DIR_WIN)/%.o, $(CORE_SRCS))
+FFI_OBJS_WIN  = $(patsubst $(SRCS_DIR)/%.cpp, $(OBJS_DIR_WIN)/%.o, $(FFI_SRCS))
 
 # Tests
 TESTS_DIR = tests
@@ -75,9 +88,29 @@ $(SHARED): $(CORE_OBJS) $(FFI_OBJS)
 
 shared: $(SHARED)
 
+# Windows DLL: same source set as libdune.so, cross-compiled via mingw-w64.
+# -static-libgcc / -static-libstdc++ avoids requiring libstdc++-6.dll etc to
+# travel alongside the DLL on the host machine. -Wl,--export-all-symbols
+# surfaces the C ABI on Windows (Linux exports everything by default).
+# -Wl,--out-implib emits the import library so other Windows code can link
+# against it.
+$(SHARED_WIN): $(CORE_OBJS_WIN) $(FFI_OBJS_WIN)
+	@echo "$(ORANGE)$(SHARED_WIN)$(NC) linking..."
+	@$(CXX_WIN) $(CXXFLAGS_WIN) -shared -static-libgcc -static-libstdc++ \
+		-Wl,--export-all-symbols \
+		-Wl,--out-implib,$(SHARED_WIN).a \
+		-o $@ $(CORE_OBJS_WIN) $(FFI_OBJS_WIN) $(INCLUDES)
+	@echo "$(ORANGE)$(SHARED_WIN)$(NC) ready!"
+
+windows-shared: $(SHARED_WIN)
+
 $(OBJS_DIR)/%.o: $(SRCS_DIR)/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJS_DIR_WIN)/%.o: $(SRCS_DIR)/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX_WIN) $(CXXFLAGS_WIN) $(INCLUDES) -c $< -o $@
 
 $(OBJS_DIR)/tests/%.o: $(TESTS_DIR)/%.cpp
 	@mkdir -p $(dir $@)
@@ -112,12 +145,12 @@ ffi_smoke_interactive: $(FFI_SMOKE_INTERACTIVE_BIN)
 	@LD_LIBRARY_PATH=. ./$(FFI_SMOKE_INTERACTIVE_BIN)
 
 clean:
-	@rm -rf $(OBJS_DIR)
+	@rm -rf $(OBJS_DIR) $(OBJS_DIR_WIN)
 	@rm -f $(TEST_BIN) $(FFI_SMOKE_BIN) $(FFI_SMOKE_INTERACTIVE_BIN)
 	@echo "$(RED)$(NAME)$(NC) OBJS cleaned!"
 
 fclean: clean
-	@rm -f $(NAME) $(SHARED)
+	@rm -f $(NAME) $(SHARED) $(SHARED_WIN) $(SHARED_WIN).a
 	@echo "$(RED)$(NAME)$(NC) cleaned!"
 
 fcount:
@@ -125,4 +158,4 @@ fcount:
 
 re: fclean all
 
-.PHONY: all shared clean fclean re tests ffi_smoke ffi_smoke_interactive
+.PHONY: all shared windows-shared clean fclean re tests ffi_smoke ffi_smoke_interactive

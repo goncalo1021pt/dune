@@ -7,7 +7,11 @@
 # Per-user export configuration (often has local paths)
 export_presets.cfg
 
-# GDExtension build outputs land here in a follow-up PR.
-# We deliberately do NOT commit the compiled libdune.so/.dll —
-# it's a build artifact, rebuilt from srcs/ on each platform.
+# GDExtension build outputs. We deliberately do NOT commit the compiled
+# libdune.so/.dll or the wrapper .so/.dll — those are build artifacts,
+# rebuilt from srcs/ + gdextension/ on each platform.
 addons/dune/bin/
+
+# Third-party skin assets (community Dune resources). Treated as user-local
+# only — they're swappable skins, not engine deliverables.
+assets/
