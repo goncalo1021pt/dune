@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "name": "Template",
+  "description": "Reference skin layout. Copy this file, fill in asset paths, drop the copy in godot/skins/. The renderer falls back to its procedural defaults for any section you leave blank.",
+  "author": "",
+
+  "map": {
+    "image": "",
+    "width": 0,
+    "height": 0,
+    "background_color": "#1a1a1a"
+  },
+
+  "territories": {
+    "Polar Sink":          { "border_svg": "", "sectors": {} },
+    "Imperial Basin":      { "border_svg": "", "sectors": { "9": {}, "10": {}, "11": {} } },
+    "Arrakeen":            { "border_svg": "", "sectors": { "10": {} } },
+    "Carthag":             { "border_svg": "", "sectors": { "11": {} } },
+    "Sietch Tabr":         { "border_svg": "", "sectors": { "14": {} } },
+    "Habbanya Sietch":     { "border_svg": "", "sectors": { "17": {} } },
+    "Tuek's Sietch":       { "border_svg": "", "sectors": { "5": {} } },
+
+    "Old Gap":             { "border_svg": "", "sectors": { "9": {}, "10": {}, "11": {} } },
+    "Tsimpo":              { "border_svg": "", "sectors": { "11": {}, "12": {}, "13": {} } },
+    "Hagga Basin":         { "border_svg": "", "sectors": { "12": {}, "13": {} } },
+    "Plastic Basin":       { "border_svg": "", "sectors": { "12": {}, "13": {}, "14": {} } },
+    "Sihaya Ridge":        { "border_svg": "", "sectors": { "9": {} } },
+    "Hole in the Rock":    { "border_svg": "", "sectors": { "9": {} } },
+    "Basin":               { "border_svg": "", "sectors": { "9": {} } },
+    "Broken Land":         { "border_svg": "", "sectors": { "11": {}, "12": {} } },
+    "Arsunt":              { "border_svg": "", "sectors": { "11": {}, "12": {} } },
+    "Rock Outcroppings":   { "border_svg": "", "sectors": { "13": {}, "14": {} } },
+
+    "Shield Wall":         { "border_svg": "", "sectors": { "8": {}, "9": {} } },
+    "False Wall East":     { "border_svg": "", "sectors": { "5": {}, "6": {}, "7": {}, "8": {}, "9": {} } },
+    "False Wall South":    { "border_svg": "", "sectors": { "4": {}, "5": {} } },
+    "False Wall West":     { "border_svg": "", "sectors": { "16": {}, "17": {}, "18": {} } },
+    "Pasty Mesa":          { "border_svg": "", "sectors": { "5": {}, "6": {}, "7": {}, "8": {} } },
+    "The Minor Erg":       { "border_svg": "", "sectors": { "5": {}, "6": {}, "7": {}, "8": {} } },
+    "Red Chasm":           { "border_svg": "", "sectors": { "7": {} } },
+    "Gara Kulon":          { "border_svg": "", "sectors": { "8": {} } },
+    "Rim Wall West":       { "border_svg": "", "sectors": { "9": {} } },
+    "Bight of the Cliff":  { "border_svg": "", "sectors": { "14": {}, "15": {} } },
+
+    "Cielago West":        { "border_svg": "", "sectors": { "1": {}, "18": {} } },
+    "Cielago Depression":  { "border_svg": "", "sectors": { "1": {}, "2": {}, "3": {} } },
+    "Cielago North":       { "border_svg": "", "sectors": { "1": {}, "2": {}, "3": {} } },
+    "Cielago South":       { "border_svg": "", "sectors": { "2": {}, "3": {} } },
+    "Cielago East":        { "border_svg": "", "sectors": { "3": {}, "4": {} } },
+    "Meridian":            { "border_svg": "", "sectors": { "1": {}, "2": {} } },
+    "Harg Pass":           { "border_svg": "", "sectors": { "4": {}, "5": {} } },
+    "South Mesa":          { "border_svg": "", "sectors": { "4": {}, "5": {}, "6": {} } },
+
+    "Wind Pass":           { "border_svg": "", "sectors": { "14": {}, "15": {}, "16": {}, "17": {} } },
+    "Wind Pass North":     { "border_svg": "", "sectors": { "17": {}, "18": {} } },
+    "Habbanya Erg":        { "border_svg": "", "sectors": { "16": {}, "17": {} } },
+    "Habbanya Ridge Flat": { "border_svg": "", "sectors": { "17": {}, "18": {} } },
+    "The Great Flat":      { "border_svg": "", "sectors": { "15": {} } },
+    "Funeral Plain":       { "border_svg": "", "sectors": { "15": {} } },
+    "The Greater Flat":    { "border_svg": "", "sectors": { "16": {} } }
+  },
+
+  "factions": {
+    "Atreides":      { "color": "#2e5cb8", "text_color": "#ffffff", "force_token_image": "", "elite_force_token_image": "", "icon_image": "" },
+    "Harkonnen":     { "color": "#1a1a1a", "text_color": "#ffffff", "force_token_image": "", "elite_force_token_image": "", "icon_image": "" },
+    "Fremen":        { "color": "#d27a36", "text_color": "#ffffff", "force_token_image": "", "elite_force_token_image": "", "icon_image": "" },
+    "Emperor":       { "color": "#9b2742", "text_color": "#ffffff", "force_token_image": "", "elite_force_token_image": "", "icon_image": "" },
+    "Spacing Guild": { "color": "#d6c14a", "text_color": "#000000", "force_token_image": "", "elite_force_token_image": "", "icon_image": "" },
+    "Bene Gesserit": { "color": "#efe9d6", "text_color": "#000000", "force_token_image": "", "elite_force_token_image": "", "icon_image": "" }
+  },
+
+  "treachery_cards": {},
+  "leaders": {},
+  "audio": {
+    "phase_music": {},
+    "ui_sounds": {}
+  }
+}
