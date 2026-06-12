@@ -35,6 +35,26 @@
 #ifndef DUNE_C_API_H
 #define DUNE_C_API_H
 
+/* Per-symbol export marker. On Windows the C ABI surface is annotated with
+ * __declspec(dllexport) when building libdune.dll, and __declspec(dllimport)
+ * when consuming it. This replaces -Wl,--export-all-symbols, which spilled
+ * embedded-static dependencies (winpthread, libstdc++) into libdune.dll.a
+ * and caused duplicate-symbol link errors in downstream consumers like the
+ * GDExtension wrapper.
+ *
+ * Define DUNE_BUILDING_DLL when compiling the engine on Windows; consumers
+ * leave it unset and pick up dllimport. On Linux/macOS the macro is empty —
+ * default visibility already exports extern "C" symbols. */
+#if defined(_WIN32) || defined(__CYGWIN__)
+  #ifdef DUNE_BUILDING_DLL
+    #define DUNE_API __declspec(dllexport)
+  #else
+    #define DUNE_API __declspec(dllimport)
+  #endif
+#else
+  #define DUNE_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,39 +70,39 @@ extern "C" {
 typedef struct dune_session dune_session_t;
 
 /* Returns a static string of the form "1.0" or "1.0+pr4b". Not freed. */
-const char* dune_api_version(void);
+DUNE_API const char* dune_api_version(void);
 
 /* Returns build metadata: compiler, flags, schema version. Not freed. */
-const char* dune_api_build_info(void);
+DUNE_API const char* dune_api_build_info(void);
 
 /* Allocates a new session. Returns NULL on failure (out of memory, bad args).
  * num_players: 2-6. seed: any uint32. The created session has run no phases. */
-dune_session_t* dune_session_create(unsigned int seed, int num_players);
+DUNE_API dune_session_t* dune_session_create(unsigned int seed, int num_players);
 
 /* Tears down the session. After this, the handle must not be used.
  * Safe to call with NULL (no-op). */
-void dune_session_destroy(dune_session_t* session);
+DUNE_API void dune_session_destroy(dune_session_t* session);
 
 /* v1 synchronous run. Advances the game from its current state until either
  * the game ends or a decision is required (the latter is impossible in v1
  * because the FFI session uses an AI adapter; v2 changes that). Returns
  * DUNE_DONE on completion, DUNE_ERR_INTERNAL on engine exception. */
-int dune_session_run_to_end(dune_session_t* session);
+DUNE_API int dune_session_run_to_end(dune_session_t* session);
 
 /* Builds a JSON document describing the full game state. *out_json must be
  * freed by the caller via dune_free(). Returns DUNE_OK or an error code.
  * Hidden information is NOT redacted — server-side filter is responsible. */
-int dune_session_get_snapshot(dune_session_t* session, char** out_json);
+DUNE_API int dune_session_get_snapshot(dune_session_t* session, char** out_json);
 
 /* Pops the next event from the session's queue. The session subscribes to
  * the engine's event bus on creation; events emitted during run_to_end are
  * accumulated in publish order. Returns DUNE_OK if an event was returned
  * (caller frees *out_json), DUNE_NO_EVENT if the queue is empty. */
-int dune_session_poll_event(dune_session_t* session, char** out_json);
+DUNE_API int dune_session_poll_event(dune_session_t* session, char** out_json);
 
 /* Frees a string previously returned by a dune_session_* call.
  * Safe to call with NULL. */
-void dune_free(char* p);
+DUNE_API void dune_free(char* p);
 
 /* ---- v2: interactive session (PR 4b) ----
  *
@@ -103,7 +123,7 @@ void dune_free(char* p);
 
 /* Allocates a new interactive session. Returns NULL on failure.
  * Same constraints as dune_session_create (num_players: 2-6). */
-dune_session_t* dune_session_create_interactive(unsigned int seed, int num_players);
+DUNE_API dune_session_t* dune_session_create_interactive(unsigned int seed, int num_players);
 
 /* Advance the engine until the next decision request or game completion.
  * Behaviour by current state:
@@ -118,12 +138,12 @@ dune_session_t* dune_session_create_interactive(unsigned int seed, int num_playe
  * ended, DUNE_ERR_STATE if called on an AI-mode session or with a pending
  * decision unanswered, DUNE_ERR_ARG on bad handle, DUNE_ERR_INTERNAL on
  * worker exception. */
-int dune_session_step(dune_session_t* session);
+DUNE_API int dune_session_step(dune_session_t* session);
 
 /* Read the JSON-serialized DecisionRequest currently awaiting a response.
  * *out_json must be freed by the caller via dune_free. Returns DUNE_OK,
  * DUNE_ERR_STATE if no decision is pending, or DUNE_ERR_ARG on bad handle. */
-int dune_session_get_pending_decision(dune_session_t* session, char** out_json);
+DUNE_API int dune_session_get_pending_decision(dune_session_t* session, char** out_json);
 
 /* Provide the response to the pending decision and advance the engine.
  * in_json must be {"value": "<string>"} where the string becomes
@@ -132,7 +152,7 @@ int dune_session_get_pending_decision(dune_session_t* session, char** out_json);
  *
  * Returns the same codes as dune_session_step once the engine stabilises
  * after consuming the response (DUNE_PENDING / DUNE_DONE / DUNE_ERR_*). */
-int dune_session_submit_decision(dune_session_t* session, const char* in_json);
+DUNE_API int dune_session_submit_decision(dune_session_t* session, const char* in_json);
 
 #ifdef __cplusplus
 }

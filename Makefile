@@ -31,7 +31,11 @@ CXXFLAGS = -Wall -Wextra -Werror -g3 -std=c++17 -fPIC
 # the FFI's FFIAsyncAdapter relies on std::thread / std::condition_variable
 # (PR 4b), which are stubs under the default win32 thread model.
 CXX_WIN = x86_64-w64-mingw32-g++-posix
-CXXFLAGS_WIN = -Wall -Wextra -Werror -g3 -std=c++17
+# DUNE_BUILDING_DLL flips DUNE_API in dune_c_api.h to __declspec(dllexport)
+# so the C ABI symbols are marked for export per-symbol. Consumers (the
+# GDExtension wrapper, downstream tools) compile without this define and
+# pick up __declspec(dllimport).
+CXXFLAGS_WIN = -Wall -Wextra -Werror -g3 -std=c++17 -DDUNE_BUILDING_DLL
 
 OBJS_DIR = objs
 OBJS_DIR_WIN = objs_win
@@ -89,15 +93,18 @@ $(SHARED): $(CORE_OBJS) $(FFI_OBJS)
 shared: $(SHARED)
 
 # Windows DLL: same source set as libdune.so, cross-compiled via mingw-w64.
-# -static-libgcc / -static-libstdc++ avoids requiring libstdc++-6.dll etc to
-# travel alongside the DLL on the host machine. -Wl,--export-all-symbols
-# surfaces the C ABI on Windows (Linux exports everything by default).
-# -Wl,--out-implib emits the import library so other Windows code can link
-# against it.
+# -static -static-libgcc -static-libstdc++ folds the mingw runtime into the
+# DLL — no libstdc++-6.dll / libwinpthread-1.dll travelling alongside, no
+# host-side Error 126 from a missing transitive dependency.
+# The C ABI surface is exported per-symbol via __declspec(dllexport) (see
+# DUNE_API in includes/headers/ffi/dune_c_api.h, enabled by DUNE_BUILDING_DLL
+# in CXXFLAGS_WIN). That keeps libdune.dll.a tight — only dune_* entries —
+# so downstream linkers (GDExtension wrapper) don't see duplicate symbols
+# from the embedded winpthread/libstdc++. -Wl,--out-implib emits that import
+# library for downstream code to link against.
 $(SHARED_WIN): $(CORE_OBJS_WIN) $(FFI_OBJS_WIN)
 	@echo "$(ORANGE)$(SHARED_WIN)$(NC) linking..."
-	@$(CXX_WIN) $(CXXFLAGS_WIN) -shared -static-libgcc -static-libstdc++ \
-		-Wl,--export-all-symbols \
+	@$(CXX_WIN) $(CXXFLAGS_WIN) -shared -static -static-libgcc -static-libstdc++ \
 		-Wl,--out-implib,$(SHARED_WIN).a \
 		-o $@ $(CORE_OBJS_WIN) $(FFI_OBJS_WIN) $(INCLUDES)
 	@echo "$(ORANGE)$(SHARED_WIN)$(NC) ready!"
