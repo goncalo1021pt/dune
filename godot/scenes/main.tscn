@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://b8nrt4f1xv4qd"]
+[gd_scene load_steps=4 format=3 uid="uid://b8nrt4f1xv4qd"]
 
 [ext_resource type="Script" path="res://scripts/dune_runner.gd" id="1_runner"]
 [ext_resource type="Script" path="res://scripts/dune_map_view.gd" id="2_map"]
+[ext_resource type="Script" path="res://scripts/decision_panel.gd" id="3_decision"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -34,7 +35,7 @@ script = ExtResource("2_map")
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.0
-custom_minimum_size = Vector2(280, 0)
+custom_minimum_size = Vector2(320, 0)
 
 [node name="Status" type="Label" parent="HBox/Side"]
 layout_mode = 2
@@ -72,7 +73,34 @@ layout_mode = 2
 [node name="RunButton" type="Button" parent="HBox/Side/Buttons"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Run game"
+text = "Run game (AI)"
+
+[node name="PlayButton" type="Button" parent="HBox/Side/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Play interactive"
+
+[node name="Decision" type="PanelContainer" parent="HBox/Side"]
+visible = false
+layout_mode = 2
+script = ExtResource("3_decision")
+
+[node name="VBox" type="VBoxContainer" parent="HBox/Side/Decision"]
+layout_mode = 2
+
+[node name="Header" type="Label" parent="HBox/Side/Decision/VBox"]
+layout_mode = 2
+text = "Decision"
+
+[node name="Prompt" type="RichTextLabel" parent="HBox/Side/Decision/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 60)
+bbcode_enabled = false
+fit_content = true
+scroll_active = false
+
+[node name="Body" type="VBoxContainer" parent="HBox/Side/Decision/VBox"]
+layout_mode = 2
 
 [node name="Summary" type="Label" parent="HBox/Side"]
 layout_mode = 2
