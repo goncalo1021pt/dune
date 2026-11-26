@@ -9,6 +9,47 @@ palette, or the full set of card / leader / audio assets.
 paths under the keys that matter to you, drop the file in this directory,
 and the editor's skin selector will pick it up.
 
+## Importing the official board (treachery.online packs)
+
+The usual way to get real art is to import a treachery.online skin pack
+(`skin-*.json`) rather than author a skin by hand. The packs carry the
+official board geometry (territory outlines, token and spice positions, planet
+centre) and URLs for the art.
+
+```sh
+# packs live in godot/assets/ (gitignored)
+python3 tools/skin_import.py --all                                # every pack
+python3 tools/skin_import.py godot/assets/skin-gf9art-zimmer.json # just one
+```
+
+The importer downloads the board image and faction token art into
+`godot/assets/cache/<art>/`, and writes converted skins to
+`godot/assets/skins/`. The skin picker lists those first and remembers the
+last one you chose. It also checks the board's 18 storm sectors against the
+engine's sector table in `srcs/map.cpp`, and exits non-zero on any mismatch.
+
+**Everything it writes stays in `godot/assets/`, which is gitignored.** The
+art is copyrighted (GF9 / treachery.online). Only the importer is committed,
+so never move imported files into a tracked directory, and don't distribute a
+build that includes them.
+
+Imported skins use three additions to the schema below:
+`territories.<name>.border_polygons` (flat `[x0, y0, x1, y1, ...]` arrays,
+several per territory allowed, preferred over `border_svg`), and a `board`
+section:
+
+```jsonc
+"board": {
+  "center": { "x": 281, "y": 311 },   // planet centre, map pixel space
+  "radius": 242,
+  "sector_center_base_deg": 129.8,    // centre angle of sector s is
+  "sector_step_deg": -20,             //   base + step * s  (screen space, y down)
+  "storm_color": "#ff646480",
+  "highlight_color": "#ffffff80",
+  "token_radius": 8, "spice_color": "#ff8c3ce6", "spice_radius": 8
+}
+```
+
 ## Schema
 
 ```jsonc
@@ -92,6 +133,7 @@ Atreides   Harkonnen   Fremen   Emperor   Spacing Guild   Bene Gesserit
 If a skin omits a section the renderer needs, it falls back to its
 procedural defaults:
 - No `map.image` → 18-sector polar wheel drawn from `dune_map_data.gd`.
+- No `board` section → no storm overlay on the map image.
 - No territory entry → procedural ring assignment used.
 - No faction color → palette from `dune_map_data.gd` used.
 
