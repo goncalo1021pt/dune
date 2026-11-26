@@ -12,14 +12,19 @@ Checkpoint left on 2026-06-12. Engine is green; the Godot feature work is a
   Godot run below is verified. It supersedes PR #37's `decision_panel.gd`
   with `dune_decision_panel.gd`; #37's `headless_test.gd` and the Windows
   `DUNE_API` export fix are kept.
-- **This commit (WIP):** interactive step/submit loop + decision panel + skin
-  system. Code-complete-ish but **never run live in Godot**.
+- **This branch:** interactive step/submit loop + decision panel + skin system.
+  Logic verified headless on 2026-11-26 (Godot 4.6.2), see thread 1.
 
 ## Open threads (pick up here)
 
-1. **Verify the Godot run.** The interactive loop (`dune_runner.gd`
-   step→get_pending_decision→submit) and `dune_decision_panel.gd` have not been
-   executed in the editor. This is the #1 unknown — verify before building more.
+1. **Verify the Godot run — logic done, visuals pending.** Verified headless
+   on 2026-11-26: `make tests` 79/79, `ffi_smoke` + `ffi_smoke_interactive`
+   PASS, `headless_test.gd` PASS (295 decisions), all scripts pass
+   `--check-only`, and a driver that loads `main.tscn`, presses Play and clicks
+   the first panel button each time played a full seed-42 / 6-player game to
+   "Game complete." (295 decisions: 164 int, 130 select, 1 yn).
+   **Still needs a human in the editor:** map rendering, layout, skin picker /
+   image underlay, and whether the decisions are understandable to a player.
 
 2. **Real art skins are intentionally out of git.** `godot/assets/` is
    `.gitignore`d (line 17). The 10 skins there are **GF9 / treachery.online
@@ -32,11 +37,10 @@ Checkpoint left on 2026-06-12. Engine is green; the Godot feature work is a
      re-downloadable from treachery.online).
    - The skin picker scans `res://skins/`, which only holds `template_skin.json`.
 
-3. **Stale native libs.** `godot/addons/dune/bin/libdune.so` is dated 2026-05-15;
-   the root `libdune.so` was rebuilt 2026-05-30. If engine behavior changed,
-   copy the fresh `libdune.so` over and/or rebuild the wrapper from
-   `gdextension/` (`scons platform=linux target=template_debug`).
-   `addons/dune/bin/` is gitignored (build artifacts), so this is local-only.
+3. **Native libs (local-only).** `addons/dune/bin/` is gitignored. Rebuilt on
+   2026-11-26. After any engine change: `make shared`, then
+   `cd gdextension && scons platform=linux target=template_debug` (it also
+   copies `libdune.so` into `addons/dune/bin/`).
 
 ## Quick resume
 
