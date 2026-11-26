@@ -1,16 +1,25 @@
 extends Control
 class_name DuneMapView
 
-# Polar map renderer for an Arrakis snapshot.
+# Map renderer for an Arrakis snapshot. Two layout modes:
 #
-# Layout: 18 storm sectors × 5 rings (centre = Polar Sink). Each territory
-# claims a (ring, sector-set) intersection and is drawn as an annular sector
-# polygon. Units are stacked as a small chip at the territory's centroid;
-# spice piles render as gold dots; the active storm sector overlays in red.
+#   1. Procedural (default): 18 storm sectors × 5 rings (centre = Polar Sink).
+#      Each territory claims a (ring, sector-set) intersection drawn as an
+#      annular sector polygon. No external assets required.
+#
+#   2. Skin-driven: if a DuneSkin with a map image is provided via set_skin(),
+#      the skin's map.png is drawn as the underlay and per-(territory, sector)
+#      anchors from the skin replace the procedural centroids. Any territory
+#      the skin doesn't cover falls back to procedural for that one piece.
+#
+# Units render as faction-coloured chips (or, when the skin ships them, force
+# token sprites); spice piles render as gold dots; the active storm sector
+# overlays in red regardless of mode.
 
-# preload() so the class is available during const-init (class_name lookup
+# preload() so the classes are available during const-init (class_name lookup
 # is resolved later in the compile pass and breaks the constants below).
 const DuneMapData := preload("res://scripts/dune_map_data.gd")
+const DuneSkin    := preload("res://scripts/dune_skin.gd")
 
 const SECTOR_COUNT := DuneMapData.SECTOR_COUNT
 const RING_COUNT   := DuneMapData.RING_COUNT
@@ -29,29 +38,76 @@ const SPICE_COLOR            := Color(1.0, 0.83, 0.2)
 
 var _snapshot: Dictionary = {}
 var _font: Font = null
+var _skin: DuneSkin = null
+
+# Cached skin→view transform, recomputed on resize/set_skin.
+var _skin_scale: float = 1.0
+var _skin_offset: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
-	resized.connect(queue_redraw)
+	resized.connect(_on_resized)
+
+func _on_resized() -> void:
+	_recompute_skin_transform()
+	queue_redraw()
 
 func set_snapshot(snapshot: Dictionary) -> void:
 	_snapshot = snapshot
 	queue_redraw()
 
+func set_skin(skin: DuneSkin) -> void:
+	_skin = skin
+	_recompute_skin_transform()
+	queue_redraw()
+
+func _recompute_skin_transform() -> void:
+	# Skin coords are in the map image's pixel space (map_size). Fit-to-control
+	# with uniform scale + center the result.
+	if _skin == null or _skin.map_size == Vector2.ZERO:
+		_skin_scale = 1.0
+		_skin_offset = Vector2.ZERO
+		return
+	var sx := size.x / _skin.map_size.x
+	var sy := size.y / _skin.map_size.y
+	_skin_scale = minf(sx, sy)
+	var rendered := _skin.map_size * _skin_scale
+	_skin_offset = (size - rendered) * 0.5
+
+func _skin_to_view(p: Vector2) -> Vector2:
+	return _skin_offset + p * _skin_scale
+
 func _draw() -> void:
 	if _snapshot.is_empty():
 		return
 
+	if _skin != null and _skin.has_map_image():
+		_draw_skin_background()
+	else:
+		_draw_procedural_background()
+
+	# Storm overlay + unit/spice glyphs are drawn the same way in both modes —
+	# they just use different anchor functions internally.
+	_draw_storm_overlay()
+	_draw_units_and_spice()
+	if _skin == null or not _skin.has_map_image():
+		_draw_polar_sink_label()
+
+func _draw_procedural_background() -> void:
 	var center := size * 0.5
 	var view_min := minf(size.x, size.y)
-	var radius_outer := view_min * RING_OUTER_RADIUS_FRAC
-	var radius_inner := view_min * RING_INNER_RADIUS_FRAC
+	var r_outer := view_min * RING_OUTER_RADIUS_FRAC
+	var r_inner := view_min * RING_INNER_RADIUS_FRAC
+	_draw_territories_procedural(center, r_inner, r_outer)
+	_draw_sector_guides(center, r_inner, r_outer)
 
-	_draw_storm_overlay(center, radius_inner, radius_outer)
-	_draw_territories(center, radius_inner, radius_outer)
-	_draw_sector_guides(center, radius_inner, radius_outer)
-	_draw_units_and_spice(center, radius_inner, radius_outer)
-	_draw_polar_sink_label(center, radius_inner)
+func _draw_skin_background() -> void:
+	# Fill the area around the map with the skin's background colour, then
+	# blit the map image at the computed scale/offset.
+	draw_rect(Rect2(Vector2.ZERO, size), _skin.background_color)
+	var tex := _skin.get_map_texture()
+	if tex != null:
+		draw_texture_rect(tex, Rect2(_skin_offset, _skin.map_size * _skin_scale), false)
 
 # --- Geometry helpers ---
 
@@ -122,11 +178,19 @@ func _territory_polygon(ring: int, sectors_raw: Array, center: Vector2,
 
 # --- Draw passes ---
 
-func _draw_storm_overlay(center: Vector2, r_inner: float, r_outer: float) -> void:
+# Storm overlay: only in procedural mode. In skin mode we don't have a
+# canonical (center, radius, zero-angle) without the skin author pinning it
+# down — left to the side panel for now.
+func _draw_storm_overlay() -> void:
+	if _skin != null and _skin.has_map_image():
+		return
 	var storm: Dictionary = _snapshot.get("storm", {})
 	var sector := int(storm.get("sector", 0))
 	if sector < 1 or sector > SECTOR_COUNT:
 		return
+	var center := size * 0.5
+	var view_min := minf(size.x, size.y)
+	var r_outer := view_min * RING_OUTER_RADIUS_FRAC
 	var ang_start := _sector_angle(sector)
 	var ang_end := _sector_angle(sector + 1)
 	var pts := PackedVector2Array()
@@ -135,13 +199,10 @@ func _draw_storm_overlay(center: Vector2, r_inner: float, r_outer: float) -> voi
 		var t := float(i) / float(subs)
 		var ang := lerpf(ang_start, ang_end, t)
 		pts.push_back(center + Vector2(cos(ang), sin(ang)) * r_outer)
-	for i in range(subs + 1):
-		var t := float(i) / float(subs)
-		var ang := lerpf(ang_end, ang_start, t)
-		pts.push_back(center + Vector2(cos(ang), sin(ang)) * 0.0)
+	pts.push_back(center)
 	draw_colored_polygon(pts, STORM_COLOR)
 
-func _draw_territories(center: Vector2, r_inner: float, r_outer: float) -> void:
+func _draw_territories_procedural(center: Vector2, r_inner: float, r_outer: float) -> void:
 	var territories: Array = _snapshot.get("map", {}).get("territories", [])
 	for t in territories:
 		var name: String = t.get("name", "")
@@ -152,7 +213,6 @@ func _draw_territories(center: Vector2, r_inner: float, r_outer: float) -> void:
 		if poly.is_empty():
 			continue
 		draw_colored_polygon(poly, DuneMapData.terrain_color(terrain))
-		# Outline.
 		var outline := poly.duplicate()
 		outline.push_back(outline[0])
 		draw_polyline(outline, TERRITORY_OUTLINE, TERRITORY_OUTLINE_W, true)
@@ -164,47 +224,102 @@ func _draw_sector_guides(center: Vector2, r_inner: float, r_outer: float) -> voi
 		var p_out := center + Vector2(cos(ang), sin(ang)) * r_outer
 		draw_line(p_in, p_out, SECTOR_GUIDE_COLOR, 1.0, true)
 
-func _draw_units_and_spice(center: Vector2, r_inner: float, r_outer: float) -> void:
+# Anchor for a unit stack at (territory, sector). Prefers the skin's anchor
+# transformed into view space; falls back to the procedural centroid.
+func _anchor_for(territory_name: String, sectors: Array, sector_hint: int = -1) -> Vector2:
+	if _skin != null:
+		var s := sector_hint
+		if s < 0 and not sectors.is_empty():
+			s = int(sectors[0])
+		var p = _skin.force_anchor(territory_name, s)
+		if p != null:
+			return _skin_to_view(p)
+	# Procedural fallback.
+	var center := size * 0.5
+	var view_min := minf(size.x, size.y)
+	var r_outer := view_min * RING_OUTER_RADIUS_FRAC
+	var r_inner := view_min * RING_INNER_RADIUS_FRAC
+	var ring := DuneMapData.ring_for(territory_name)
+	return _centroid(ring, sectors, center, r_inner, r_outer)
+
+func _spice_anchor_for(territory_name: String, sectors: Array, sector_hint: int = -1) -> Vector2:
+	if _skin != null:
+		var s := sector_hint
+		if s < 0 and not sectors.is_empty():
+			s = int(sectors[0])
+		var p = _skin.spice_anchor(territory_name, s)
+		if p != null:
+			return _skin_to_view(p)
+	return _anchor_for(territory_name, sectors, sector_hint)
+
+func _draw_units_and_spice() -> void:
 	var territories: Array = _snapshot.get("map", {}).get("territories", [])
 	for t in territories:
 		var name: String = t.get("name", "")
 		var sectors: Array = t.get("sectors", [])
-		var ring := DuneMapData.ring_for(name)
 		if sectors.is_empty():
 			continue
-		var anchor := _centroid(ring, sectors, center, r_inner, r_outer)
 
 		var unit_offset := 0
 		for u in t.get("units", []):
-			var f := int(u.get("faction_index", -1))
 			var n := int(u.get("normal", 0))
 			var e := int(u.get("elite", 0))
 			if n + e == 0:
 				continue
+			var f := int(u.get("faction_index", -1))
+			var fac_name := _faction_name_for_index(f)
+			var sector := int(u.get("sector", -1))
+			var anchor := _anchor_for(name, sectors, sector)
 			var pos := anchor + Vector2(0, unit_offset * 14 - 6)
-			_draw_unit_chip(pos, f, n, e, bool(u.get("advisor", false)))
+			_draw_unit_chip(pos, f, fac_name, n, e, bool(u.get("advisor", false)))
 			unit_offset += 1
 
 		for sp in t.get("spice", []):
 			var amt := int(sp.get("amount", 0))
 			if amt <= 0:
 				continue
-			var spice_pos := anchor + Vector2(0, unit_offset * 14)
+			var sector := int(sp.get("sector", -1))
+			var spice_pos := _spice_anchor_for(name, sectors, sector) + Vector2(0, unit_offset * 14)
 			draw_circle(spice_pos, 7.0, SPICE_COLOR)
 			_draw_centred_text(spice_pos, str(amt), 9, Color.BLACK)
 			unit_offset += 1
 
-func _draw_unit_chip(pos: Vector2, faction_idx: int, normal: int, elite: int, advisor: bool) -> void:
+func _draw_unit_chip(pos: Vector2, faction_idx: int, faction_name: String,
+		normal: int, elite: int, advisor: bool) -> void:
+	# Skin sprite first, color chip otherwise.
+	var tex: Texture2D = null
+	if _skin != null and not faction_name.is_empty():
+		tex = _skin.faction_force_texture(faction_name, elite > 0)
 	var bg := DuneMapData.faction_color(faction_idx)
 	var fg := DuneMapData.faction_text_color(faction_idx)
+	if _skin != null and not faction_name.is_empty():
+		bg = _skin.faction_color(faction_name, bg)
+		fg = _skin.faction_text_color(faction_name, fg)
 	var label := "%d" % normal if elite == 0 else "%d+%d" % [normal, elite]
 	if advisor:
 		label = "•" + label
-	draw_circle(pos, 8.5, bg)
-	_draw_centred_text(pos, label, 9, fg)
+	if tex != null:
+		# Roughly chip-sized sprite, centered on pos.
+		var s := 18.0
+		draw_texture_rect(tex, Rect2(pos - Vector2(s, s) * 0.5, Vector2(s, s)), false)
+		_draw_centred_text(pos + Vector2(0, s * 0.6), label, 9, fg)
+	else:
+		draw_circle(pos, 8.5, bg)
+		_draw_centred_text(pos, label, 9, fg)
 
-func _draw_polar_sink_label(center: Vector2, r_inner: float) -> void:
-	_draw_centred_text(center, "Polar\nSink", 8, TEXT_COLOR)
+func _draw_polar_sink_label() -> void:
+	_draw_centred_text(size * 0.5, "Polar\nSink", 8, TEXT_COLOR)
+
+# Faction index → name lookup. Uses the snapshot's player list so we don't
+# have to hardcode the index→name mapping anywhere.
+func _faction_name_for_index(idx: int) -> String:
+	if idx < 0:
+		return ""
+	var players: Array = _snapshot.get("players", [])
+	for p in players:
+		if int(p.get("faction_index", -1)) == idx:
+			return str(p.get("faction_name", ""))
+	return ""
 
 # --- Geometry: territory centroid (rough — midpoint of the arc midline) ---
 

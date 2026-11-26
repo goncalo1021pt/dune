@@ -2,56 +2,94 @@ extends Control
 
 # Drives a DuneSession and hands its snapshots to the map view + side panel.
 #
-# Two modes:
-#   - "Run game" (AI): synchronous run_to_end() — engine plays itself to
-#     completion, we render the final snapshot.
-#   - "Play interactive": opens an interactive session (v2 ABI) and steps
-#     decision-by-decision. Every actor's prompts route through the
-#     DecisionPanel, so the player drives all factions hot-seat style.
-#     Per-actor AI/human routing is a follow-up (and the seam where
-#     multiplayer enters).
+# Two modes share the same scene:
+#   AI run         — synchronous run_to_end; renders the final state.
+#   Interactive    — create_interactive, then a step/submit loop:
+#                      while step() returns PENDING:
+#                          get_pending_decision → render in decision panel
+#                          await user submit    → submit_decision
+#                    A snapshot refresh happens after every submit so the
+#                    map updates between every decision the player makes.
+#
+# The skin selector picks any *.json under res://skins/. Loading a skin with
+# a map.image flips the map view from procedural polar drawing to image-
+# underlay rendering; with everything else (faction tokens, anchors) layered
+# on top per the skin's settings.
 
-@onready var status_label: Label    = $HBox/Side/Status
-@onready var seed_spin: SpinBox     = $HBox/Side/Controls/SeedSpin
-@onready var players_spin: SpinBox  = $HBox/Side/Controls/PlayersSpin
-@onready var run_button: Button     = $HBox/Side/Buttons/RunButton
-@onready var play_button: Button    = $HBox/Side/Buttons/PlayButton
-@onready var event_log: RichTextLabel = $HBox/Side/EventLog
-@onready var summary_label: Label   = $HBox/Side/Summary
-@onready var map_view: DuneMapView  = $HBox/Map
-@onready var decision_panel: PanelContainer = $HBox/Side/Decision
+# preload() the script-defined classes so their types resolve on the first
+# parse pass — class_name registration happens later in Godot's compile
+# sequence and any direct DuneSkin / DuneMapView / DuneDecisionPanel
+# reference here would fail until the second pass.
+const DuneSkin           := preload("res://scripts/dune_skin.gd")
+const DuneMapView        := preload("res://scripts/dune_map_view.gd")
+const DuneDecisionPanel  := preload("res://scripts/dune_decision_panel.gd")
+
+@onready var status_label: Label              = $HBox/Side/Status
+@onready var seed_spin: SpinBox               = $HBox/Side/Controls/SeedSpin
+@onready var players_spin: SpinBox            = $HBox/Side/Controls/PlayersSpin
+@onready var skin_picker: OptionButton        = $HBox/Side/Controls/SkinPicker
+@onready var run_button: Button               = $HBox/Side/Buttons/RunButton
+@onready var play_button: Button              = $HBox/Side/Buttons/PlayButton
+@onready var stop_button: Button              = $HBox/Side/Buttons/StopButton
+@onready var event_log: RichTextLabel         = $HBox/Side/EventLog
+@onready var summary_label: Label             = $HBox/Side/Summary
+@onready var map_view                          = $HBox/Map           # DuneMapView
+@onready var decision_panel                    = $HBox/Side/DecisionPanel  # DuneDecisionPanel
 
 var _session: DuneSession = null
-# Rolling tail of human-readable event lines, kept across interactive
-# decisions so the side panel reads like a phase log.
-var _event_tail: Array[String] = []
-const _EVENT_TAIL_LIMIT := 30
-# Total events drained over the lifetime of the current session — useful
-# for showing progress in interactive mode where the game ends after
-# many small steps.
-var _event_count: int = 0
-
+var _skin_paths: Array[String] = []
+var _interactive_running := false
+var _stop_requested := false
 
 func _ready() -> void:
 	run_button.pressed.connect(_on_run_pressed)
-	play_button.pressed.connect(_on_play_interactive_pressed)
-	decision_panel.decision_submitted.connect(_on_decision_submitted)
+	play_button.pressed.connect(_on_play_pressed)
+	stop_button.pressed.connect(_on_stop_pressed)
 	seed_spin.value = 42
 	players_spin.value = 6
+	stop_button.disabled = true
+
+	_populate_skin_picker()
+	skin_picker.item_selected.connect(_on_skin_selected)
+	_apply_selected_skin()
+
 	status_label.text = "libdune API %s" % DuneSession.api_version()
 
+# --- Skin selector ---
 
-# --- AI mode (unchanged from PR #36) ---------------------------------
+func _populate_skin_picker() -> void:
+	skin_picker.clear()
+	skin_picker.add_item("(none — procedural)")  # idx 0
+	_skin_paths = DuneSkin.list_skin_files()
+	for p in _skin_paths:
+		skin_picker.add_item(p.get_file().get_basename())
+	if not _skin_paths.is_empty():
+		skin_picker.selected = 1   # default to first real skin
+
+func _on_skin_selected(_idx: int) -> void:
+	_apply_selected_skin()
+
+func _apply_selected_skin() -> void:
+	var idx := skin_picker.selected
+	if idx <= 0 or idx - 1 >= _skin_paths.size():
+		map_view.set_skin(null)
+		return
+	var path := _skin_paths[idx - 1]
+	var skin := DuneSkin.load_from_file(path)
+	map_view.set_skin(skin)
+
+# --- AI run ---
 
 func _on_run_pressed() -> void:
-	_reset_state("Running…")
-	# Defer one frame so the UI repaints "Running…" before the engine
-	# blocks the main thread inside run_to_end().
+	if _interactive_running:
+		return
+	_destroy_session()
+	status_label.text = "Running…"
+	event_log.text = ""
+	summary_label.text = ""
+	# Defer a frame so the UI repaints before run_to_end blocks the thread.
 	await get_tree().process_frame
-	_run_session_ai()
 
-
-func _run_session_ai() -> void:
 	_session = DuneSession.new()
 	if not _session.create(int(seed_spin.value), int(players_spin.value)):
 		status_label.text = "FAIL: dune_session_create returned NULL"
@@ -62,139 +100,120 @@ func _run_session_ai() -> void:
 		status_label.text = "FAIL: run_to_end rc=%d" % rc
 		return
 
-	_drain_events()
-	_refresh_render()
-	status_label.text = "Done — drained %d events." % _event_count
+	var event_count := _drain_events_to_log(30)
+	_refresh_snapshot(event_count, "Done — AI run, %d events." % event_count)
 
+# --- Interactive run ---
 
-# --- Interactive mode -------------------------------------------------
-
-func _on_play_interactive_pressed() -> void:
-	_reset_state("Starting interactive session…")
-	await get_tree().process_frame
-	_session = DuneSession.new()
-	if not _session.create_interactive(int(seed_spin.value), int(players_spin.value)):
-		status_label.text = "FAIL: dune_session_create_interactive returned NULL"
+func _on_play_pressed() -> void:
+	if _interactive_running:
 		return
-	_advance()
-
-
-# Step the engine forward to its next stable state and route accordingly.
-# Called once after create_interactive(), then again after every
-# decision the player submits.
-func _advance() -> void:
-	if _session == null or not _session.is_open():
-		return
-	# Yield so the UI repaints whatever the previous decision changed
-	# before we re-enter the blocking step() call.
-	await get_tree().process_frame
-
-	var rc: int = _session.step()
-	_drain_events()
-	_refresh_render()
-
-	match rc:
-		DuneSession.RESULT_PENDING:
-			_show_pending_decision()
-		DuneSession.RESULT_DONE:
-			status_label.text = "Game over — drained %d events." % _event_count
-		DuneSession.RESULT_ERR_STATE:
-			status_label.text = "FAIL: step rc=ERR_STATE (worker not idle?)"
-		_:
-			status_label.text = "FAIL: step rc=%d" % rc
-
-
-func _on_decision_submitted(response_json: String) -> void:
-	if _session == null or not _session.is_open():
-		return
-	status_label.text = "Submitting decision…"
-	await get_tree().process_frame
-	var rc: int = _session.submit_decision(response_json)
-	_drain_events()
-	_refresh_render()
-
-	match rc:
-		DuneSession.RESULT_PENDING:
-			_show_pending_decision()
-		DuneSession.RESULT_DONE:
-			status_label.text = "Game over — drained %d events." % _event_count
-		_:
-			status_label.text = "FAIL: submit_decision rc=%d" % rc
-
-
-# Pull the pending decision JSON, look up the actor's faction name from
-# the snapshot, hand both to the decision panel.
-func _show_pending_decision() -> void:
-	var request_json: String = _session.get_pending_decision()
-	if request_json.is_empty():
-		status_label.text = "FAIL: get_pending_decision returned empty"
-		return
-	var parsed: Variant = JSON.parse_string(request_json)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		status_label.text = "FAIL: decision JSON didn't parse"
-		return
-	var request: Dictionary = parsed
-	var actor_index: int = int(request.get("actor_index", -1))
-	var actor_label: String = _faction_name_for(actor_index)
-	status_label.text = "Waiting for %s…" % actor_label
-	decision_panel.show_request(request, actor_label)
-
-
-# --- Shared helpers --------------------------------------------------
-
-func _reset_state(new_status: String) -> void:
-	status_label.text = new_status
+	_destroy_session()
+	_interactive_running = true
+	_stop_requested = false
+	run_button.disabled = true
+	play_button.disabled = true
+	stop_button.disabled = false
 	event_log.text = ""
 	summary_label.text = ""
-	_event_tail.clear()
-	_event_count = 0
-	decision_panel.clear()
+	status_label.text = "Starting interactive session…"
+	await get_tree().process_frame
 
+	_session = DuneSession.new()
+	if not _session.create_interactive(int(seed_spin.value), int(players_spin.value)):
+		status_label.text = "FAIL: create_interactive returned NULL"
+		_end_interactive()
+		return
 
-# Drain everything currently in the engine's event queue into the
-# rolling tail. Cheap to call between decisions — the FFI poll returns
-# DUNE_NO_EVENT (and an empty string) as soon as the queue is dry.
-func _drain_events() -> void:
+	# Bootstrap: kick the engine off Idle into its first stable state.
+	# After that, every loop iteration's state-advance happens inside
+	# submit_decision (it returns the post-submit state code), so we must NOT
+	# call step() again — that would be a step from AwaitingDecision and
+	# return DUNE_ERR_STATE.
+	var rc: int = _session.step()
+	while true:
+		await get_tree().process_frame
+		if _stop_requested:
+			status_label.text = "Stopped."
+			break
+
+		_drain_events_to_log(30)
+		_refresh_snapshot(-1, "")
+
+		if rc == DuneSession.RESULT_DONE:
+			status_label.text = "Game complete."
+			break
+		if rc != DuneSession.RESULT_PENDING:
+			status_label.text = "step rc=%d, stopping." % rc
+			break
+
+		# Pending decision — hand it to the panel and wait.
+		var req_json := _session.get_pending_decision()
+		var parsed: Variant = JSON.parse_string(req_json)
+		if typeof(parsed) != TYPE_DICTIONARY:
+			status_label.text = "decision JSON parse failed."
+			break
+		var req: Dictionary = parsed
+		status_label.text = "Awaiting decision: %s" % str(req.get("kind", "?"))
+		decision_panel.show_decision(req)
+		var value: String = await decision_panel.submitted
+		decision_panel.hide_decision()
+		var sub := JSON.stringify({"value": value, "correlation_id": req.get("correlation_id", 0)})
+		# submit_decision returns the next state code (PENDING/DONE/ERR).
+		# Don't call step() afterwards — submit IS the step.
+		rc = _session.submit_decision(sub)
+		if rc < 0:
+			status_label.text = "submit_decision rc=%d, stopping." % rc
+			break
+
+	_end_interactive()
+
+func _on_stop_pressed() -> void:
+	_stop_requested = true
+	# Emit an empty submit if the panel is waiting, to unblock the await.
+	if decision_panel.visible:
+		decision_panel.submitted.emit("")
+		decision_panel.hide_decision()
+
+func _end_interactive() -> void:
+	_interactive_running = false
+	run_button.disabled = false
+	play_button.disabled = false
+	stop_button.disabled = true
+	decision_panel.hide_decision()
+	_destroy_session()
+
+# --- Common ---
+
+func _destroy_session() -> void:
+	if _session != null:
+		_session.destroy()
+		_session = null
+
+# Drain up to N most-recent events into the side panel. Returns the count
+# drained this call.
+func _drain_events_to_log(tail_limit: int) -> int:
+	if _session == null:
+		return 0
+	var tail: Array[String] = []
+	for line in event_log.text.split("\n", false):
+		if not line.is_empty():
+			tail.append(line)
+
+	var added := 0
 	while true:
 		var ev_json := _session.poll_event()
 		if ev_json.is_empty():
 			break
-		_event_count += 1
+		added += 1
 		var summary := _summarise_event(ev_json)
 		if not summary.is_empty():
-			_event_tail.append(summary)
-			if _event_tail.size() > _EVENT_TAIL_LIMIT:
-				_event_tail.pop_front()
-	event_log.text = "\n".join(_event_tail)
+			tail.append(summary)
+			while tail.size() > tail_limit:
+				tail.pop_front()
+	event_log.text = "\n".join(tail)
+	return added
 
-
-# Pull a fresh snapshot, re-render the map and the summary panel.
-func _refresh_render() -> void:
-	var snapshot_json := _session.get_snapshot()
-	var parsed: Variant = JSON.parse_string(snapshot_json)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return
-	var snapshot: Dictionary = parsed
-	map_view.set_snapshot(snapshot)
-	_render_summary(snapshot)
-
-
-func _faction_name_for(actor_index: int) -> String:
-	if actor_index < 0 or _session == null:
-		return "?"
-	var snapshot_json := _session.get_snapshot()
-	var parsed: Variant = JSON.parse_string(snapshot_json)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return "actor #%d" % actor_index
-	var players: Array = (parsed as Dictionary).get("players", [])
-	for p in players:
-		if int(p.get("faction_index", -1)) == actor_index:
-			return str(p.get("faction_name", "actor #%d" % actor_index))
-	return "actor #%d" % actor_index
-
-
-# Pull a one-line summary from a JSON event. The event schema is documented
-# in includes/Docs/snapshot_schema.md (Event section).
 func _summarise_event(json_text: String) -> String:
 	var parsed: Variant = JSON.parse_string(json_text)
 	if typeof(parsed) != TYPE_DICTIONARY:
@@ -207,8 +226,23 @@ func _summarise_event(json_text: String) -> String:
 	var faction_part := "" if faction.is_empty() else " %s" % faction
 	return "[T%s %s%s] %s" % [t, phase, faction_part, msg]
 
+# Refresh the map view + side panel from the current session's snapshot.
+# Pass event_count >= 0 to update the "drained" line; pass extra_status to
+# overwrite the status label.
+func _refresh_snapshot(event_count: int, extra_status: String) -> void:
+	if _session == null:
+		return
+	var snapshot_json := _session.get_snapshot()
+	var parsed: Variant = JSON.parse_string(snapshot_json)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	var snapshot: Dictionary = parsed
+	map_view.set_snapshot(snapshot)
+	_render_summary(snapshot, event_count)
+	if not extra_status.is_empty():
+		status_label.text = extra_status
 
-func _render_summary(snapshot: Dictionary) -> void:
+func _render_summary(snapshot: Dictionary, event_count: int) -> void:
 	var game: Dictionary = snapshot.get("game", {})
 	var players: Array = snapshot.get("players", [])
 	var lines: Array[String] = []
@@ -222,7 +256,8 @@ func _render_summary(snapshot: Dictionary) -> void:
 		int(game.get("player_count", 0)),
 	])
 	lines.append("Storm sector: %d" % int(snapshot.get("storm", {}).get("sector", 0)))
-	lines.append("Events drained: %d" % _event_count)
+	if event_count >= 0:
+		lines.append("Events drained: %d" % event_count)
 	lines.append("")
 	lines.append("Spice:")
 	for p in players:
