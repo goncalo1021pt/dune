@@ -1,23 +1,19 @@
-# Handoff — `godot-ui-verify`
+# Handoff
 
-Checkpoint left on 2026-06-12. Engine is green; the Godot feature work is a
-**WIP checkpoint** — committed so it's backed up, not finished.
+Last updated 2026-11-26. Engine is green and the Godot UI plays full games;
+the board now renders with the official art via imported skin packs.
 
 ## Where things stand
 
 - **Engine (C++):** healthy. `make shared` clean, `make tests` → 79/79 pass.
-- **Branch:** `godot-ui-verify`, a short-lived branch off `main`. As of
-  2026-11-26 `main` is the only long-lived branch (the old `v1` line was
-  fast-forwarded into it and deleted). This branch merges into `main` once the
-  Godot run below is verified. It supersedes PR #37's `decision_panel.gd`
-  with `dune_decision_panel.gd`; #37's `headless_test.gd` and the Windows
-  `DUNE_API` export fix are kept.
-- **This branch:** interactive step/submit loop + decision panel + skin system.
-  Logic verified headless on 2026-11-26 (Godot 4.6.2), see thread 1.
+- **Branches:** `main` is the only long-lived branch and must stay working.
+  Feature work goes on short-lived branches that merge by PR and are then
+  deleted. The Godot interactive UI merged in #38, and this file's threads
+  continue from there.
 
 ## Open threads (pick up here)
 
-1. **Verify the Godot run — logic done, visuals pending.** Verified headless
+1. **Godot run — verified.** Verified headless
    on 2026-11-26: `make tests` 79/79, `ffi_smoke` + `ffi_smoke_interactive`
    PASS, `headless_test.gd` PASS (295 decisions), all scripts pass
    `--check-only`, and a driver that loads `main.tscn`, presses Play and clicks
@@ -26,16 +22,16 @@ Checkpoint left on 2026-06-12. Engine is green; the Godot feature work is a
    **Still needs a human in the editor:** map rendering, layout, skin picker /
    image underlay, and whether the decisions are understandable to a player.
 
-2. **Real art skins are intentionally out of git.** `godot/assets/` is
-   `.gitignore`d (line 17). The 10 skins there are **GF9 / treachery.online
-   art (copyrighted)** — keep them out of the repo. They are NOT loadable as-is:
-   they use a different schema (`TreacheryCardType_STR`, `DrawResourceIconsOnMap`)
-   than `godot/skins/template_skin.json`, which is the format `dune_skin.gd`
-   reads. To use them you'd need a **schema-conversion step**.
-   - `godot/assets/Skins.zip` is the single bundle of all 10 → **back it up
-     off-machine** (it's local-only since assets/ is ignored; also
-     re-downloadable from treachery.online).
-   - The skin picker scans `res://skins/`, which only holds `template_skin.json`.
+2. **Official board art — imported (2026-11-26).** `tools/skin_import.py`
+   converts the treachery.online packs in `godot/assets/` (gitignored,
+   copyrighted) into skins under `godot/assets/skins/`. It downloads art to
+   `godot/assets/cache/` and checks the storm sectors against
+   `srcs/map.cpp`. All 10 packs import with 0 sector mismatches. Board
+   mode draws the real map, the storm on the real sector, faction tokens, and
+   spice on the printed spice spots, and highlights territories on hover. See
+   `godot/skins/README.md`. `Skins.zip` is still local-only, so back it up.
+   **Next:** answer territory decisions by clicking the map (`DuneMapView`
+   already emits `territory_clicked`), and show card and leader art.
 
 3. **Native libs (local-only).** `addons/dune/bin/` is gitignored. Rebuilt on
    2026-11-26. After any engine change: `make shared`, then

@@ -57,6 +57,8 @@ func _ready() -> void:
 
 # --- Skin selector ---
 
+const SETTINGS_PATH := "user://settings.cfg"
+
 func _populate_skin_picker() -> void:
 	skin_picker.clear()
 	skin_picker.add_item("(none — procedural)")  # idx 0
@@ -65,8 +67,22 @@ func _populate_skin_picker() -> void:
 		skin_picker.add_item(p.get_file().get_basename())
 	if not _skin_paths.is_empty():
 		skin_picker.selected = 1   # default to first real skin
+	# Restore the last skin the player picked, if it still exists.
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		var last := str(cfg.get_value("ui", "skin", ""))
+		if last == "<none>":
+			skin_picker.selected = 0
+		else:
+			var i := _skin_paths.find(last)
+			if i >= 0:
+				skin_picker.selected = i + 1
 
-func _on_skin_selected(_idx: int) -> void:
+func _on_skin_selected(idx: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)   # keep other keys; a missing file is fine
+	cfg.set_value("ui", "skin", "<none>" if idx <= 0 else _skin_paths[idx - 1])
+	cfg.save(SETTINGS_PATH)
 	_apply_selected_skin()
 
 func _apply_selected_skin() -> void:

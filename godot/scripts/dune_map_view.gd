@@ -15,6 +15,12 @@ class_name DuneMapView
 # Units render as faction-coloured chips (or, when the skin ships them, force
 # token sprites); spice piles render as gold dots; the active storm sector
 # overlays in red regardless of mode.
+#
+# With a skin that has territory outlines (tools/skin_import.py output) the
+# view is also interactive: hovering highlights a territory and names it, and
+# clicking emits `territory_clicked`.
+
+signal territory_clicked(territory_name: String)
 
 # preload() so the classes are available during const-init (class_name lookup
 # is resolved later in the compile pass and breaks the constants below).
@@ -35,6 +41,7 @@ const STORM_COLOR            := Color(0.9, 0.15, 0.15, 0.32)
 const SECTOR_GUIDE_COLOR     := Color(0, 0, 0, 0.18)
 const TEXT_COLOR             := Color(0.05, 0.05, 0.05, 0.85)
 const SPICE_COLOR            := Color(1.0, 0.83, 0.2)
+const TOKEN_SCALE            := 1.35   # board mode: force token size vs pack radius
 
 var _snapshot: Dictionary = {}
 var _font: Font = null
@@ -44,9 +51,29 @@ var _skin: DuneSkin = null
 var _skin_scale: float = 1.0
 var _skin_offset: Vector2 = Vector2.ZERO
 
+var _hover_territory: String = ""
+var _mouse_pos: Vector2 = Vector2.ZERO
+
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	resized.connect(_on_resized)
+	mouse_exited.connect(func():
+		_hover_territory = ""
+		queue_redraw())
+
+func _gui_input(event: InputEvent) -> void:
+	if _skin == null or _skin.territories.is_empty():
+		return
+	if event is InputEventMouseMotion:
+		_mouse_pos = event.position
+		var t := _skin.territory_at(_view_to_skin(event.position))
+		if t != _hover_territory:
+			_hover_territory = t
+		queue_redraw()
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var t := _skin.territory_at(_view_to_skin(event.position))
+		if not t.is_empty():
+			territory_clicked.emit(t)
 
 func _on_resized() -> void:
 	_recompute_skin_transform()
@@ -77,21 +104,29 @@ func _recompute_skin_transform() -> void:
 func _skin_to_view(p: Vector2) -> Vector2:
 	return _skin_offset + p * _skin_scale
 
+func _view_to_skin(p: Vector2) -> Vector2:
+	return (p - _skin_offset) / maxf(_skin_scale, 0.0001)
+
+func _board_mode() -> bool:
+	return _skin != null and _skin.has_map_image()
+
 func _draw() -> void:
-	if _snapshot.is_empty():
+	if _board_mode():
+		# The board is worth showing before a game starts, too.
+		_draw_skin_background()
+		_draw_hover_highlight()
+		if not _snapshot.is_empty():
+			_draw_storm_overlay_board()
+			_draw_units_and_spice()
+		_draw_hover_label()
 		return
 
-	if _skin != null and _skin.has_map_image():
-		_draw_skin_background()
-	else:
-		_draw_procedural_background()
-
-	# Storm overlay + unit/spice glyphs are drawn the same way in both modes —
-	# they just use different anchor functions internally.
+	if _snapshot.is_empty():
+		return
+	_draw_procedural_background()
 	_draw_storm_overlay()
 	_draw_units_and_spice()
-	if _skin == null or not _skin.has_map_image():
-		_draw_polar_sink_label()
+	_draw_polar_sink_label()
 
 func _draw_procedural_background() -> void:
 	var center := size * 0.5
@@ -178,12 +213,62 @@ func _territory_polygon(ring: int, sectors_raw: Array, center: Vector2,
 
 # --- Draw passes ---
 
-# Storm overlay: only in procedural mode. In skin mode we don't have a
-# canonical (center, radius, zero-angle) without the skin author pinning it
-# down — left to the side panel for now.
-func _draw_storm_overlay() -> void:
-	if _skin != null and _skin.has_map_image():
+# --- Board (skin) mode passes ---
+
+func _draw_hover_highlight() -> void:
+	if _hover_territory.is_empty():
 		return
+	for poly in _skin.territory_borders(_hover_territory):
+		var pts := PackedVector2Array()
+		for p in poly:
+			pts.push_back(_skin_to_view(p))
+		if pts.size() < 3:
+			continue
+		var tris := Geometry2D.triangulate_polygon(pts)
+		if not tris.is_empty():
+			# Half the pack's alpha: a light wash keeps the board art readable.
+			var hc := _skin.highlight_color
+			draw_colored_polygon(pts, Color(hc, hc.a * 0.5))
+		var outline := pts.duplicate()
+		outline.push_back(pts[0])
+		draw_polyline(outline, Color(1, 1, 1, 0.9), 2.0, true)
+
+func _draw_hover_label() -> void:
+	if _hover_territory.is_empty() or _font == null:
+		return
+	var fs := 15
+	var text := _hover_territory
+	var tsize := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+	var pos := _mouse_pos + Vector2(14, -10)
+	pos.x = minf(pos.x, size.x - tsize.x - 12)
+	var rect := Rect2(pos - Vector2(6, tsize.y - 2), tsize + Vector2(12, 6))
+	draw_rect(rect, Color(0, 0, 0, 0.75))
+	draw_string(_font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+
+# Storm as a translucent wedge over the board's real sector. Needs the
+# board calibration the importer writes; without it, no overlay.
+func _draw_storm_overlay_board() -> void:
+	if not _skin.has_board:
+		return
+	var sector := int(_snapshot.get("storm", {}).get("sector", 0))
+	if sector < 1 or sector > SECTOR_COUNT:
+		return
+	var mid := _skin.sector_center_angle(sector)
+	var half := deg_to_rad(absf(_skin.sector_step_deg)) * 0.5
+	var c := _skin_to_view(_skin.board_center)
+	var r := _skin.board_radius * _skin_scale
+	var pts := PackedVector2Array([c])
+	var subs := 12
+	for i in range(subs + 1):
+		var ang := lerpf(mid - half, mid + half, float(i) / subs)
+		pts.push_back(c + Vector2(cos(ang), sin(ang)) * r)
+	draw_colored_polygon(pts, _skin.storm_color)
+	var outline := pts.duplicate()
+	outline.push_back(c)
+	draw_polyline(outline, Color(_skin.storm_color, 0.9), 1.5, true)
+
+# Storm overlay: procedural mode.
+func _draw_storm_overlay() -> void:
 	var storm: Dictionary = _snapshot.get("storm", {})
 	var sector := int(storm.get("sector", 0))
 	if sector < 1 or sector > SECTOR_COUNT:
@@ -253,6 +338,9 @@ func _spice_anchor_for(territory_name: String, sectors: Array, sector_hint: int 
 	return _anchor_for(territory_name, sectors, sector_hint)
 
 func _draw_units_and_spice() -> void:
+	if _board_mode():
+		_draw_units_and_spice_board()
+		return
 	var territories: Array = _snapshot.get("map", {}).get("territories", [])
 	for t in territories:
 		var name: String = t.get("name", "")
@@ -347,3 +435,75 @@ func _draw_centred_text(pos: Vector2, text: String, font_size: int, color: Color
 	var ascent := _font.get_ascent(font_size)
 	var origin := pos - size_v * 0.5 + Vector2(0, ascent)
 	draw_multiline_string(_font, origin, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, -1, color)
+
+# --- Board-mode tokens ---
+
+# Stacks that share a (territory, sector) are laid out in a row centred on the
+# skin's anchor; spice sits on its own anchor (or under the row).
+func _draw_units_and_spice_board() -> void:
+	# Pack radii are tuned for treachery.online's layout; a bit larger reads
+	# better over the full-size board art.
+	var r := maxf(_skin.token_radius * _skin_scale * TOKEN_SCALE, 10.0)
+	var territories: Array = _snapshot.get("map", {}).get("territories", [])
+	for t in territories:
+		var name: String = t.get("name", "")
+		var sectors: Array = t.get("sectors", [])
+		if sectors.is_empty():
+			continue
+		var groups := {}   # sector -> Array of unit dicts
+		for u in t.get("units", []):
+			if int(u.get("normal", 0)) + int(u.get("elite", 0)) == 0:
+				continue
+			var sec := int(u.get("sector", -1))
+			if not groups.has(sec):
+				groups[sec] = []
+			groups[sec].append(u)
+		for sec in groups:
+			var stacks: Array = groups[sec]
+			var anchor := _anchor_for(name, sectors, sec)
+			var step := r * 2.1
+			var x0 := anchor.x - step * (stacks.size() - 1) * 0.5
+			for i in stacks.size():
+				var u: Dictionary = stacks[i]
+				_draw_force_token(Vector2(x0 + step * i, anchor.y), r, u)
+
+		for sp in t.get("spice", []):
+			var amt := int(sp.get("amount", 0))
+			if amt <= 0:
+				continue
+			var sec := int(sp.get("sector", -1))
+			var pos: Vector2
+			var p = _skin.spice_anchor(name, sec)
+			if p != null:
+				pos = _skin_to_view(p)
+			else:
+				pos = _anchor_for(name, sectors, sec) + Vector2(0, r * 2.2)
+			var sr := maxf(_skin.spice_radius * _skin_scale, 8.0)
+			draw_circle(pos, sr, _skin.spice_color)
+			draw_arc(pos, sr, 0, TAU, 24, Color(0, 0, 0, 0.8), 1.5, true)
+			_draw_outlined_text(pos, str(amt), int(sr * 1.1), Color.BLACK, Color(1, 1, 1, 0.6))
+
+func _draw_force_token(pos: Vector2, r: float, u: Dictionary) -> void:
+	var f := int(u.get("faction_index", -1))
+	var fac_name := _faction_name_for_index(f)
+	var normal := int(u.get("normal", 0))
+	var elite := int(u.get("elite", 0))
+	var bg := _skin.faction_color(fac_name, DuneMapData.faction_color(f))
+	draw_circle(pos + Vector2(1.5, 2), r, Color(0, 0, 0, 0.45))       # shadow
+	draw_circle(pos, r, bg)
+	var tex := _skin.faction_force_texture(fac_name, elite > 0 and normal == 0)
+	if tex != null:
+		var s := r * 1.7
+		draw_texture_rect(tex, Rect2(pos - Vector2(s, s) * 0.5, Vector2(s, s)), false)
+	draw_arc(pos, r, 0, TAU, 32, Color(1, 1, 1, 0.85) if not bool(u.get("advisor", false)) else Color(0.6, 0.8, 1.0), 1.5, true)
+	var label := str(normal) if elite == 0 else ("%d+%d★" % [normal, elite] if normal > 0 else "%d★" % elite)
+	_draw_outlined_text(pos + Vector2(0, r * 0.95), label, int(r * 0.95), Color.WHITE, Color.BLACK)
+
+func _draw_outlined_text(pos: Vector2, text: String, font_size: int, color: Color, outline: Color) -> void:
+	if _font == null:
+		return
+	font_size = maxi(font_size, 9)
+	var w := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var origin := pos + Vector2(-w * 0.5, _font.get_ascent(font_size) * 0.5 - 1)
+	draw_string_outline(_font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 4, outline)
+	draw_string(_font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)

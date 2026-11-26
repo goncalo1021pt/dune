@@ -18,9 +18,24 @@ var map_image_path: String = ""
 var map_size: Vector2 = Vector2.ZERO
 var background_color: Color = Color("#1a1a1a")
 
-# territory name -> { border: PackedVector2Array, sectors: { sector_int -> SectorEntry } }
+# territory name -> { borders: Array[PackedVector2Array], sectors: { sector_int -> SectorEntry } }
 # SectorEntry is { force_anchor: Vector2 or null, spice_anchor: Vector2 or null }
 var territories: Dictionary = {}
+
+# Board calibration (optional; written by tools/skin_import.py). Lets the
+# renderer draw the storm over the real sectors of the map image.
+# Centre angle of sector s (degrees, screen space, y down) is
+#   sector_center_base_deg + sector_step_deg * s
+var has_board: bool = false
+var board_center: Vector2 = Vector2.ZERO
+var board_radius: float = 0.0
+var sector_center_base_deg: float = 0.0
+var sector_step_deg: float = -20.0
+var storm_color: Color = Color(1, 0, 0, 0.33)
+var highlight_color: Color = Color(1, 1, 1, 0.27)
+var token_radius: float = 11.0
+var spice_color: Color = Color("#ffd700")
+var spice_radius: float = 8.0
 
 # faction name -> { color, text_color, force_token_image, elite_force_token_image, icon_image }
 var factions: Dictionary = {}
@@ -52,15 +67,22 @@ static func load_from_file(path: String) -> RefCounted:
 	skin._parse(parsed as Dictionary)
 	return skin
 
-static func list_skin_files(dir_path: String = "res://skins/") -> Array[String]:
+# Imported packs (res://assets/skins/, gitignored) come first so the picker
+# defaults to real art when it is installed; committed skins follow.
+const SKIN_DIRS := ["res://assets/skins/", "res://skins/"]
+
+static func list_skin_files() -> Array[String]:
 	var out: Array[String] = []
-	var dir := DirAccess.open(dir_path)
-	if dir == null:
-		return out
-	for f in dir.get_files():
-		if f.ends_with(".json"):
-			out.append(dir_path.path_join(f))
-	out.sort()
+	for dir_path in SKIN_DIRS:
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		var found: Array[String] = []
+		for f in dir.get_files():
+			if f.ends_with(".json"):
+				found.append(dir_path.path_join(f))
+		found.sort()
+		out.append_array(found)
 	return out
 
 func _parse(d: Dictionary) -> void:
@@ -82,15 +104,48 @@ func _parse(d: Dictionary) -> void:
 	if not bg.is_empty():
 		background_color = Color(bg)
 
+	_parse_board(d.get("board", {}))
 	_parse_territories(d.get("territories", {}))
 	_parse_factions(d.get("factions", {}))
+
+func _parse_board(b: Dictionary) -> void:
+	if b.is_empty():
+		return
+	var c = _parse_point(b.get("center"))
+	if c == null or float(b.get("radius", 0)) <= 0.0:
+		push_warning("DuneSkin: board section missing center/radius, ignoring it")
+		return
+	has_board = true
+	board_center = c
+	board_radius = float(b["radius"])
+	sector_center_base_deg = float(b.get("sector_center_base_deg", 0.0))
+	sector_step_deg = float(b.get("sector_step_deg", -20.0))
+	storm_color = _parse_color(b.get("storm_color"), storm_color)
+	highlight_color = _parse_color(b.get("highlight_color"), highlight_color)
+	token_radius = float(b.get("token_radius", token_radius))
+	spice_color = _parse_color(b.get("spice_color"), spice_color)
+	spice_radius = float(b.get("spice_radius", spice_radius))
 
 func _parse_territories(td: Dictionary) -> void:
 	for terr_name_v in td.keys():
 		var terr_name := String(terr_name_v)
 		var t: Dictionary = td[terr_name_v]
+		var borders: Array[PackedVector2Array] = []
+		# border_polygons: [[x0, y0, x1, y1, ...], ...] (importer output) —
+		# preferred over border_svg, and supports multi-part territories.
+		for flat in t.get("border_polygons", []):
+			var poly := PackedVector2Array()
+			var arr: Array = flat
+			for i in range(0, arr.size() - 1, 2):
+				poly.push_back(Vector2(float(arr[i]), float(arr[i + 1])))
+			if poly.size() >= 3:
+				borders.append(poly)
+		if borders.is_empty():
+			var svg_poly := _parse_svg_path(str(t.get("border_svg", "")))
+			if svg_poly.size() >= 3:
+				borders.append(svg_poly)
 		var entry := {
-			"border": _parse_svg_path(str(t.get("border_svg", ""))),
+			"borders": borders,
 			"sectors": {},
 		}
 		var sectors: Dictionary = t.get("sectors", {})
@@ -118,32 +173,65 @@ func _parse_factions(fd: Dictionary) -> void:
 # --- Accessors ---
 
 func has_map_image() -> bool:
-	return not map_image_path.is_empty() and ResourceLoader.exists(map_image_path)
+	return not map_image_path.is_empty() and get_map_texture() != null
 
 func get_map_texture() -> Texture2D:
-	return _load_texture(map_image_path)
+	return _load_texture(map_image_path, MAP_SVG_RASTER_PX)
 
 # Returns the force anchor for (territory, sector) in skin pixel space, or
-# null if the skin doesn't specify one. Callers fall back to procedural.
+# null if the skin doesn't specify one. An unknown sector (e.g. 0 before the
+# first storm) falls back to the territory's lowest listed sector.
 func force_anchor(territory_name: String, sector: int) -> Variant:
-	var t = territories.get(territory_name)
-	if t == null: return null
-	var s = t.sectors.get(sector)
+	var s = _sector_entry(territory_name, sector)
 	if s == null: return null
 	return s.force_anchor
 
+# Each territory has a single printed spice spot on the board, but the engine
+# may report the pile in another of the territory's sectors, so fall back to
+# whichever sector carries the spice anchor.
 func spice_anchor(territory_name: String, sector: int) -> Variant:
+	var s = _sector_entry(territory_name, sector)
+	if s != null and s.spice_anchor != null:
+		return s.spice_anchor
 	var t = territories.get(territory_name)
 	if t == null: return null
-	var s = t.sectors.get(sector)
-	if s == null: return null
-	return s.spice_anchor
+	for k in t.sectors:
+		if t.sectors[k].spice_anchor != null:
+			return t.sectors[k].spice_anchor
+	return null
 
-# PackedVector2Array of border points in skin pixel space, or empty.
-func territory_border(territory_name: String) -> PackedVector2Array:
+func _sector_entry(territory_name: String, sector: int) -> Variant:
 	var t = territories.get(territory_name)
-	if t == null: return PackedVector2Array()
-	return t.border
+	if t == null or t.sectors.is_empty(): return null
+	if t.sectors.has(sector):
+		return t.sectors[sector]
+	var keys: Array = t.sectors.keys()
+	keys.sort()
+	return t.sectors[keys[0]]
+
+# Border polygons for a territory in skin pixel space (may be several).
+func territory_borders(territory_name: String) -> Array:
+	var t = territories.get(territory_name)
+	if t == null: return []
+	return t.borders
+
+# Name of the territory under `p` (skin pixel space), or "" if none. When
+# outlines nest (a sietch inside its surrounding flat) the smallest wins.
+func territory_at(p: Vector2) -> String:
+	var best := ""
+	var best_area := INF
+	for terr_name in territories:
+		for poly in territories[terr_name].borders:
+			if Geometry2D.is_point_in_polygon(p, poly):
+				var a := absf(_poly_area(poly))
+				if a < best_area:
+					best_area = a
+					best = terr_name
+	return best
+
+# Centre angle (radians) of storm sector `s`, if the skin has a board.
+func sector_center_angle(s: int) -> float:
+	return deg_to_rad(sector_center_base_deg + sector_step_deg * float(s))
 
 func faction_color(faction_name: String, fallback: Color) -> Color:
 	var f = factions.get(faction_name)
@@ -168,16 +256,57 @@ func faction_force_texture(faction_name: String, elite: bool = false) -> Texture
 
 # --- Internals ---
 
-func _load_texture(path: String) -> Texture2D:
+# Imported resources load through the ResourceLoader. Files nobody has
+# imported yet (freshly downloaded art under res://assets/, run headless or
+# before the editor rescans) are decoded straight from disk instead.
+func _load_texture(path: String, svg_raster_px: float = SVG_RASTER_PX) -> Texture2D:
 	if path.is_empty(): return null
 	if _texture_cache.has(path):
 		return _texture_cache[path]
-	if not ResourceLoader.exists(path):
-		_texture_cache[path] = null
-		return null
-	var tex: Texture2D = load(path) as Texture2D
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path) as Texture2D
+	elif FileAccess.file_exists(path):
+		tex = _load_texture_from_disk(path, svg_raster_px)
 	_texture_cache[path] = tex
 	return tex
+
+const SVG_RASTER_PX := 128.0       # SVG tokens are rasterised to this width
+const MAP_SVG_RASTER_PX := 3000.0  # SVG boards get enough pixels to zoom
+
+static func _load_texture_from_disk(path: String, svg_raster_px: float) -> Texture2D:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		return null
+	var img := Image.new()
+	var err := OK
+	match path.get_extension().to_lower():
+		"svg":
+			var text := bytes.get_string_from_utf8()
+			var m := RegEx.create_from_string("viewBox=\"[^\"]*?([\\d.]+)[ ,]+([\\d.]+)\"").search(text)
+			var w := float(m.get_string(1)) if m else svg_raster_px
+			err = img.load_svg_from_buffer(bytes, svg_raster_px / maxf(w, 1.0))
+		"png":
+			err = img.load_png_from_buffer(bytes)
+		"jpg", "jpeg":
+			err = img.load_jpg_from_buffer(bytes)
+		"webp":
+			err = img.load_webp_from_buffer(bytes)
+		_:
+			return null
+	if err != OK:
+		push_warning("DuneSkin: could not decode %s (err %d)" % [path, err])
+		return null
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+static func _poly_area(poly: PackedVector2Array) -> float:
+	var a := 0.0
+	for i in poly.size():
+		var p := poly[i]
+		var q := poly[(i + 1) % poly.size()]
+		a += p.x * q.y - q.x * p.y
+	return a * 0.5
 
 # Parse the M/L/Z subset of SVG path syntax. Single-letter commands followed
 # by space-separated coordinate pairs ("M243.4 297.6 L236.2 311.3 Z"). Curves
@@ -235,4 +364,6 @@ func _parse_color(v: Variant, fallback: Color) -> Color:
 	var s := String(v).strip_edges()
 	if s.is_empty():
 		return fallback
-	return Color(s)
+	# from_string returns the fallback (instead of black) on unparseable
+	# input such as CSS rgba() strings from an un-converted pack.
+	return Color.from_string(s, fallback)
